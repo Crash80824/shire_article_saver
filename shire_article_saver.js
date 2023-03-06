@@ -10,16 +10,23 @@
 // @grant        none
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
-    let title_info=document.getElementsByClassName('ts')[0].children
-    let filename=title_info[0].textContent.replace('[','【').replace(']','】')+title_info[1].textContent
-    let main_text=document.getElementsByClassName('t_f')[0].textContent
+    const title_info = document.getElementsByClassName('ts')[0].children;
+    let filename = title_info[0].textContent.replace('[', '【').replace(']', '】') + title_info[1].textContent;
+    let content = document.getElementsByClassName('t_f')[0].textContent;
 
-    let download_pos=document.getElementsByClassName('pi')[1].getElementsByTagName('strong')[0]
-    let download_href=document.createElement('a')
-    download_href.innerHTML='下载'
-    download_href.href='data:text/plain;charset=utf-8,' + main_text
-    download_href.download=filename
-    download_pos.appendChild(download_href)
+    const buffer = new TextEncoder().encode(content).buffer;
+    const blob = new Blob([buffer], { type: 'text/plain;base64' });
+    const reader = new FileReader();
+    reader.readAsDataURL(blob);
+
+    reader.onload = (event) => {
+        const download_pos = document.getElementsByClassName('pi')[1].getElementsByTagName('strong')[0];
+        const download_href = document.createElement('a');
+        download_href.innerHTML = '下载';
+        download_href.href = event.target.result;
+        download_href.download = filename;
+        download_pos.appendChild(download_href);
+      };
 })();
