@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.1.1
 // @description  download shire thread content
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -50,7 +50,7 @@
 
         reader.readAsDataURL(blob);
         reader.onload = (event) => {
-            const download_pos = document.getElementsByClassName('pi')[1].getElementsByTagName('strong')[0];
+            const download_pos = document.getElementsByClassName('plc ptm pbn vwthd')[0].children[0];
             const download_href = document.createElement('a');
             download_href.innerHTML = '保存本页';
             download_href.href = event.target.result;
