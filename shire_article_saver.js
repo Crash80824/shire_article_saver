@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         New Userscript
+// @name         shire article saver
 // @namespace    http://tampermonkey.net/
 // @version      0.1
-// @description  try to take over the world!
-// @author       You
+// @description  download shire thread content
+// @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
 // @match        https://www.shishirere.com/main/forum.php?mod=viewthread*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
