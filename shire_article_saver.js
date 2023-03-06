@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.1.3.1
+// @version      0.1.4
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -22,7 +22,7 @@
                 let quote_href = childrenNodes[i].getElementsByTagName('a')[0];
                 if (quote_href) {
                     let origin_quote = quote_href.innerText;
-                    quote_href.innerText += ' 链接: ' + quote_href.href;
+                    quote_href.innerText += ' ' + quote_href.href.match(/pid=\d*/)[0].replace('pid=', 'PID:');
                     content += childrenNodes[i].textContent + '\n';
                     quote_href.innerText = origin_quote;
                 }
@@ -55,11 +55,11 @@
         return { 'post_id': post_id, 'post_auth': post_auth, 'post_auth_id': post_auth_id, 'sub_time': sub_time, 'post_url': post_url, 'post_content': post_content };
     }
 
+
     const postlist = document.getElementById('postlist');
     const post_in_page = postlist.querySelectorAll('[class^=post_gender]');
     const thread_id = document.getElementsByClassName('plc ptm pbn vwthd')[0].lastElementChild.lastElementChild.href.split('tid=')[1];
-    const first_post_floor = post_in_page[0].getElementsByClassName('pi')[1].getElementsByTagName('strong')[0];
-    const is_fisrt_page = first_post_floor.textContent.includes('楼主');
+    const is_fisrt_page = !location.href.match(/page=([2-9]|[1-9]\d+)/);
 
     let thread_auth_name = '';
     let thread_auth_id = '';
@@ -73,16 +73,18 @@
         thread_auth_id = document.getElementById('tath').firstElementChild.href.split('uid=')[1];
     }
 
+
     let title_name = getPostlistTitle(postlist);
+    let file_info = 'Link: ' + location.href + '\n****************\n';
+
 
     if (is_fisrt_page) {
         let filename = title_name;
-        let content = '';
+        let content = file_info;
 
         const post_info = getPostInfo(post_in_page[0]);
-        content += '//作者：' + post_info.post_auth + '(UID: ' + post_info.post_auth_id + ')\n';
-        content += '//链接：' + post_info.post_url + '\n';
-        content += '//时间：' + post_info.sub_time + '\n';
+        content += '//' + post_info.post_auth + '(UID:' + post_info.post_auth_id + ') ' + post_info.sub_time + '\n';
+        content += '//PID:' + post_info.post_id + '\n';
         content += post_info.post_content;
 
         const buffer = new TextEncoder().encode(content).buffer;
@@ -91,7 +93,7 @@
 
         reader.readAsDataURL(blob);
         reader.onload = (event) => {
-            const download_pos = first_post_floor;
+            const download_pos = post_in_page[0].getElementsByClassName('pi')[1].getElementsByTagName('strong')[0];
             const download_href = document.createElement('a');
             download_href.innerHTML = '保存主楼';
             download_href.href = event.target.result;
@@ -103,13 +105,12 @@
     if (location.href.includes('authorid=' + thread_auth_id)) {
         const pageid = location.href.match(/page=\d*/)[0].split('=')[1];
         let filename = title_name + ' - ' + pageid;
-        let content = '';
+        let content = file_info;
         for (let i = 0; i < post_in_page.length; i++) {
             const post_info = getPostInfo(post_in_page[i]);
             content += '<----------------\n';
-            content += '//作者：' + post_info.post_auth + '(UID: ' + post_info.post_auth_id + ')\n';
-            content += '//链接：' + post_info.post_url + '\n';
-            content += '//时间：' + post_info.sub_time + '\n';
+            content += '//' + post_info.post_auth + '(UID:' + post_info.post_auth_id + ') ' + post_info.sub_time + '\n';
+            content += '//PID:' + post_info.post_id + '\n';
             content += post_info.post_content;
             content += '\n---------------->\n';
         }
