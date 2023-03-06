@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.1.3
+// @version      0.1.3.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -20,10 +20,15 @@
             if (childrenNodes[i].className == 'quote') {
                 content += '<<<\n';
                 let quote_href = childrenNodes[i].getElementsByTagName('a')[0];
-                let origin_quote = quote_href.innerText;
-                quote_href.innerText += ' 链接: ' + quote_href.href;
-                content += childrenNodes[i].textContent + '\n';
-                quote_href.innerText = origin_quote;
+                if (quote_href) {
+                    let origin_quote = quote_href.innerText;
+                    quote_href.innerText += ' 链接: ' + quote_href.href;
+                    content += childrenNodes[i].textContent + '\n';
+                    quote_href.innerText = origin_quote;
+                }
+                else {
+                    content += childrenNodes[i].textContent + '\n'
+                }
                 content += '>>>\n';
             }
             else {
