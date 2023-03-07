@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.2.0
+// @version      0.2.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
 // @match        https://www.shishirere.com/main/forum.php?mod=viewthread*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
-// @grant        none
+// @grant        unsafeWindow
 // ==/UserScript==
 
 (function () {
@@ -78,9 +78,54 @@
         return content;
     }
 
+    function saveFile(filename, content) {
+        const buffer = new TextEncoder().encode(content).buffer;
+        const blob = new Blob([buffer], { type: 'text/plain;base64' });
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onload = function (e) {
+            const a = document.createElement('a');
+            a.download = filename;
+            a.href = e.target.result;
+            a.click();
+        };
+    }
+
+    unsafeWindow.saveThread = function (type = 'main') {
+        const thread_id = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a').href.split('tid=')[1];
+        let title_name = $('#thread_subject').parentNode.textContent.replaceAll('\n', '').replaceAll('[', '【').replaceAll(']', '】');
+        let file_info = `Link: ${location.href}\n****************\n`;
+
+        switch (type) {
+            case 'main': {
+                let filename = title_name;
+                let content = file_info;
+                content += getPageContent(document, 'main');
+                saveFile(filename, content);
+            }
+                break;
+            case 'thread': {
+                let filename = title_name + '（全贴）';
+                let content = file_info;
+                const page_num = $('#pgt > div > div > label > span').title.replace('共 ', '').replace(' 页', '');
+                for (let page_id = 1; page_id <= page_num; page_id++) {
+                    const http_request = new XMLHttpRequest();
+                    const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&extra=&authorid=${thread_auth_id}&page=${page_id}`;
+                    http_request.open('GET', url, false);
+                    http_request.send()
+
+                    const page_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
+                    const page_content = getPageContent(page_doc, 'page');
+                    content += page_content;
+
+                }
+                saveFile(filename, content);
+            }
+                break;
+        }
+    }
 
     const is_fisrt_page = !location.href.match(/page=([2-9]|[1-9]\d+)/);
-    const thread_id = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a').href.split('tid=')[1];
     let thread_auth_name = '';
     let thread_auth_id = '';
     if (is_fisrt_page) {
@@ -94,61 +139,21 @@
     }
 
 
-    let title_name = $('#thread_subject').parentNode.textContent.replaceAll('\n', '').replaceAll('[', '【').replaceAll(']', '】');
-    let file_info = `Link: ${location.href}\n****************\n`;
-
-
     if (is_fisrt_page) {
-        let filename = title_name;
-        let content = file_info;
-
-        content += getPageContent(document, 'main');
-
-        const buffer = new TextEncoder().encode(content).buffer;
-        const blob = new Blob([buffer], { type: 'text/plain;base64' });
-        const reader = new FileReader();
-
-        reader.readAsDataURL(blob);
-        reader.onload = (event) => {
-            const download_pos = $('table > tbody > tr:nth-child(1) > td.plc > div.pi > strong', $('#postlist > div'));
-            const download_href = document.createElement('a');
-            download_href.innerHTML = '保存主楼';
-            download_href.href = event.target.result;
-            download_href.download = filename;
-            download_pos.appendChild(download_href);
-        };
+        const download_pos = $('table > tbody > tr:nth-child(1) > td.plc > div.pi > strong', $('#postlist > div'));
+        const download_href = document.createElement('a');
+        download_href.innerHTML = '保存主楼';
+        download_href.href = 'javascript:void(0)';
+        download_href.setAttribute('onclick', 'window.saveThread()');
+        download_pos.appendChild(download_href);
     }
 
     if (location.href.includes('authorid=' + thread_auth_id) && is_fisrt_page) {
-        let filename = title_name;
-        let content = file_info;
-
-        const page_num = $('#pgt > div > div > label > span').title.replace('共 ', '').replace(' 页', '');
-        for (let page_id = 1; page_id <= page_num; page_id++) {
-            const http_request = new XMLHttpRequest();
-            const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&extra=&authorid=${thread_auth_id}&page=${page_id}`;
-            http_request.open('GET', url, false);
-            http_request.send()
-
-            const page_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
-            const page_content = getPageContent(page_doc, 'page');
-            content += page_content;
-
-        }
-
-        const buffer = new TextEncoder().encode(content).buffer;
-        const blob = new Blob([buffer], { type: 'text/plain;base64' });
-        const reader = new FileReader();
-
-        reader.readAsDataURL(blob);
-        reader.onload = (event) => {
-            const download_pos = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div')
-            const download_href = document.createElement('a');
-            download_href.innerHTML = '保存全贴';
-            download_href.href = event.target.result;
-            download_href.download = filename;
-            download_pos.appendChild(download_href);
-        };
-
+        const download_pos = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div')
+        const download_href = document.createElement('a');
+        download_href.innerHTML = '保存全贴';
+        download_href.href = 'javascript:void(0)';
+        download_href.setAttribute('onclick', 'window.saveThread("thread")');
+        download_pos.appendChild(download_href);
     }
 })();
