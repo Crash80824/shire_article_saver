@@ -105,7 +105,7 @@
             }
                 break;
             case 'thread': {
-                let filename = title_name + '（全贴）';
+                let filename = title_name + '（全帖）';
                 let content = file_info;
                 const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.replace('共 ', '').replace(' 页', '');
                 for (let page_id = 1; page_id <= page_num; page_id++) {
@@ -151,7 +151,7 @@
     if (location.href.includes('authorid=' + thread_auth_id) && is_fisrt_page) {
         const download_pos = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div')
         const download_href = document.createElement('a');
-        download_href.innerHTML = '保存全贴';
+        download_href.innerHTML = '保存全帖';
         download_href.href = 'javascript:void(0)';
         download_href.setAttribute('onclick', 'window.saveThread("thread")');
         download_pos.appendChild(download_href);
