@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.1.5.2
+// @version      0.2.0
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -16,8 +16,8 @@
     const $ = (selector, parent = document) => parent.querySelector(selector);
     const $$ = (selector, parent = document) => parent.querySelectorAll(selector);
 
-    function getPostContent(pid, post_doc = document) {
-        const tf = $('#postmessage_' + pid, post_doc);
+    function getPostContent(pid, page_doc = document) {
+        const tf = $('#postmessage_' + pid, page_doc);
         let childrenNodes = tf.childNodes;
         let content = '';
         for (let i = 0; i < childrenNodes.length; i++) {
@@ -47,14 +47,14 @@
         return content;
     }
 
-    function getPostInfo(post, post_doc = document) {
+    function getPostInfo(post, page_doc = document) {
         const post_id = post.id.split('_')[1];
-        const thread_id = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a', post_doc).href.split('tid=')[1];
+        const thread_id = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a', page_doc).href.split('tid=')[1];
         const post_auth = $('#favatar' + post_id + ' > div.pi > div > a', post).text;
         const post_auth_id = $('#favatar' + post_id + ' > div.pi > div > a', post).href.split('uid=')[1];
         const sub_time = $('[id^=authorposton]', post).textContent;
-        const post_url = `${post_doc.baseURI}forum.php?mod=redirect&goto=findpost&ptid=${thread_id}&pid=${post_id}`;
-        const post_content = getPostContent(post_id, post_doc);
+        const post_url = `${page_doc.baseURI}forum.php?mod=redirect&goto=findpost&ptid=${thread_id}&pid=${post_id}`;
+        const post_content = getPostContent(post_id, page_doc);
 
         return { 'post_id': post_id, 'post_auth': post_auth, 'post_auth_id': post_auth_id, 'sub_time': sub_time, 'post_url': post_url, 'post_content': post_content };
     }
@@ -62,14 +62,13 @@
     function getPageContent(page_doc, type = 'main') {
         const postlist = $('#postlist', page_doc);
         const post_in_page = $$('[class^=post_gender]', postlist);
-        const thread_id = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a', page_doc).href.split('tid=')[1];
 
         let post_num = 1;
         if (type == 'page') { post_num = post_in_page.length; }
 
         let content = '';
         for (let i = 0; i < post_num; i++) {
-            const post_info = getPostInfo(post_in_page[i]);
+            const post_info = getPostInfo(post_in_page[i], page_doc);
             if (type != 'main') { content += '<----------------\n'; }
             content += `//${post_info.post_auth}(UID: ${post_info.post_auth_id}) ${post_info.sub_time}\n`;
             content += `//PID:${post_info.post_id}\n`;
@@ -81,7 +80,7 @@
 
 
     const is_fisrt_page = !location.href.match(/page=([2-9]|[1-9]\d+)/);
-
+    const thread_id = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a').href.split('tid=')[1];
     let thread_auth_name = '';
     let thread_auth_id = '';
     if (is_fisrt_page) {
@@ -120,12 +119,22 @@
         };
     }
 
-    if (location.href.includes('authorid=' + thread_auth_id)) {
-        const pageid = location.href.match(/page=\d*/)[0].split('=')[1];
-        let filename = title_name + ' - ' + pageid;
+    if (location.href.includes('authorid=' + thread_auth_id) && is_fisrt_page) {
+        let filename = title_name;
         let content = file_info;
 
-        content += getPageContent(document, 'page');
+        const page_num = $('#pgt > div > div > label > span').title.replace('共 ', '').replace(' 页', '');
+        for (let page_id = 1; page_id <= page_num; page_id++) {
+            const http_request = new XMLHttpRequest();
+            const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&extra=&authorid=${thread_auth_id}&page=${page_id}`;
+            http_request.open('GET', url, false);
+            http_request.send()
+
+            const page_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
+            const page_content = getPageContent(page_doc, 'page');
+            content += page_content;
+
+        }
 
         const buffer = new TextEncoder().encode(content).buffer;
         const blob = new Blob([buffer], { type: 'text/plain;base64' });
@@ -135,7 +144,7 @@
         reader.onload = (event) => {
             const download_pos = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div')
             const download_href = document.createElement('a');
-            download_href.innerHTML = '保存本页';
+            download_href.innerHTML = '保存全贴';
             download_href.href = event.target.result;
             download_href.download = filename;
             download_pos.appendChild(download_href);
