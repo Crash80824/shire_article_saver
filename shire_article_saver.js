@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.2.1
+// @version      0.2.1.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -107,7 +107,7 @@
             case 'thread': {
                 let filename = title_name + '（全贴）';
                 let content = file_info;
-                const page_num = $('#pgt > div > div > label > span').title.replace('共 ', '').replace(' 页', '');
+                const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.replace('共 ', '').replace(' 页', '');
                 for (let page_id = 1; page_id <= page_num; page_id++) {
                     const http_request = new XMLHttpRequest();
                     const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&extra=&authorid=${thread_auth_id}&page=${page_id}`;
