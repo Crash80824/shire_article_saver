@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.2.1.2
+// @version      0.2.1.3
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -19,32 +19,34 @@
     function getPostContent(pid, page_doc = document) {
         const tf = $('#postmessage_' + pid, page_doc);
         let childrenNodes = tf.childNodes;
-        let content = '';
+        let text = '';
         for (let i = 0; i < childrenNodes.length; i++) {
             const child = childrenNodes[i];
             switch (child.tagName + '.' + child.className) {
                 case 'DIV.quote':
-                    content += '<<<\n';
-                    let quote_href = $('td > div > blockquote > font > a', child);
-                    if (quote_href) {
-                        let origin_quote = quote_href.innerText;
-                        quote_href.innerText += ' ' + quote_href.href.match(/pid=\d*/)[0].replace('pid=', 'PID: ');
-                        content += child.textContent + '\n';
-                        quote_href.innerText = origin_quote;
+                    {
+                        text += '<<<\n';
+                        let quote_href = $('td > div > blockquote > font > a', child);
+                        if (quote_href) {
+                            let origin_quote = quote_href.innerText;
+                            quote_href.innerText += ' ' + quote_href.href.match(/pid=\d*/)[0].replace('pid=', 'PID: ');
+                            text += child.textContent + '\n';
+                            quote_href.innerText = origin_quote;
+                        }
+                        else {
+                            text += child.textContent + '\n'
+                        }
+                        text += '>>>\n';
                     }
-                    else {
-                        content += child.textContent + '\n'
-                    }
-                    content += '>>>\n';
                     break;
                 case 'HR.l':
-                    content += '++++++++\n';
+                    text += '++++++++\n';
                     break;
                 default:
-                    content += child.textContent;
+                    text += child.textContent;
             }
         }
-        return content;
+        return { 'text': text, 'image': [] }
     }
 
     function getPostInfo(post, page_doc = document) {
@@ -55,8 +57,11 @@
         const sub_time = $('[id^=authorposton]', post).textContent;
         const post_url = `${page_doc.baseURI}forum.php?mod=redirect&goto=findpost&ptid=${thread_id}&pid=${post_id}`;
         const post_content = getPostContent(post_id, page_doc);
+        const post_text = post_content.text;
+        const post_image = post_content.image;
 
-        return { 'post_id': post_id, 'post_auth': post_auth, 'post_auth_id': post_auth_id, 'sub_time': sub_time, 'post_url': post_url, 'post_content': post_content };
+
+        return { 'post_id': post_id, 'post_auth': post_auth, 'post_auth_id': post_auth_id, 'sub_time': sub_time, 'post_url': post_url, 'post_text': post_text, 'post_image': post_image };
     }
 
     function getPageContent(page_doc, type = 'main') {
@@ -66,16 +71,16 @@
         let post_num = 1;
         if (type == 'page') { post_num = post_in_page.length; }
 
-        let content = '';
+        let text = '';
         for (let i = 0; i < post_num; i++) {
             const post_info = getPostInfo(post_in_page[i], page_doc);
-            if (type != 'main') { content += '<----------------\n'; }
-            content += `//${post_info.post_auth}(UID: ${post_info.post_auth_id}) ${post_info.sub_time}\n`;
-            content += `//PID:${post_info.post_id}\n`;
-            content += post_info.post_content;
-            if (type != 'main') { content += '\n---------------->\n'; }
+            if (type != 'main') { text += '<----------------\n'; }
+            text += `//${post_info.post_auth}(UID: ${post_info.post_auth_id}) ${post_info.sub_time}\n`;
+            text += `//PID:${post_info.post_id}\n`;
+            text += post_info.post_text;
+            if (type != 'main') { text += '\n---------------->\n'; }
         }
-        return content;
+        return { 'text': text, 'image': [] };
     }
 
     function saveFile(filename, content) {
@@ -100,12 +105,12 @@
             case 'main': {
                 let filename = title_name;
                 let content = file_info;
-                content += getPageContent(document, 'main');
+                content += getPageContent(document, 'main').text;
                 saveFile(filename, content);
             }
                 break;
             case 'thread': {
-                let filename = title_name + '（全帖）';
+                let filename = title_name + '（全贴）';
                 let content = file_info;
                 const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.replace('共 ', '').replace(' 页', '');
                 for (let page_id = 1; page_id <= page_num; page_id++) {
@@ -115,7 +120,7 @@
                     http_request.send()
 
                     const page_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
-                    const page_content = getPageContent(page_doc, 'page');
+                    const page_content = getPageContent(page_doc, 'page').text;
                     content += page_content;
 
                 }
@@ -151,7 +156,7 @@
     if (location.href.includes('authorid=' + thread_auth_id) && is_fisrt_page) {
         const download_pos = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div')
         const download_href = document.createElement('a');
-        download_href.innerHTML = '保存全帖';
+        download_href.innerHTML = '保存全贴';
         download_href.href = 'javascript:void(0)';
         download_href.setAttribute('onclick', 'window.saveThread("thread")');
         download_pos.appendChild(download_href);
