@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.2.1.4
+// @version      0.2.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
 // @match        https://www.shishirere.com/main/forum.php?mod=viewthread*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
 // @grant        unsafeWindow
+// @grant        GM.getValue
+// @grant        GM.setValue
 // ==/UserScript==
 
 (function () {
@@ -20,8 +22,7 @@
         const tf = $('#postmessage_' + pid, page_doc);
         let childrenNodes = tf.childNodes;
         let text = '';
-        for (let i = 0; i < childrenNodes.length; i++) {
-            const child = childrenNodes[i];
+        for (let child of childrenNodes) {
             switch (child.tagName + '.' + child.className) {
                 case 'DIV.quote':
                     {
@@ -49,8 +50,10 @@
         return { 'text': text, 'image': [] }
     }
 
+    const getPostId = post => post.id.split('_')[1];
+
     function getPostInfo(post, page_doc = document) {
-        const post_id = post.id.split('_')[1];
+        const post_id = getPostId(post);
         const thread_id = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a', page_doc).href.split('tid=')[1];
         const post_auth = $('#favatar' + post_id + ' > div.pi > div > a', post).text;
         const post_auth_id = $('#favatar' + post_id + ' > div.pi > div > a', post).href.split('uid=')[1];
@@ -64,21 +67,27 @@
         return { 'post_id': post_id, 'post_auth': post_auth, 'post_auth_id': post_auth_id, 'sub_time': sub_time, 'post_url': post_url, 'post_text': post_text, 'post_image': post_image };
     }
 
-    function getPageContent(page_doc, type = 'main') {
+    async function getPageContent(page_doc, type = 'main') {
         const postlist = $('#postlist', page_doc);
         const post_in_page = $$('[class^=post_gender]', postlist);
 
-        let post_num = 1;
-        if (type == 'page') { post_num = post_in_page.length; }
-
         let text = '';
-        for (let i = 0; i < post_num; i++) {
-            const post_info = getPostInfo(post_in_page[i], page_doc);
-            if (type != 'main') { text += '<----------------\n'; }
+        for (let post of post_in_page) {
+            if (type == 'checked') {
+                const checked = await GM.getValue('check_' + getPostId(post), false);
+                if (!checked)
+                    continue;
+            }
+            const post_info = getPostInfo(post, page_doc);
+            if (type != 'main')
+                text += '<----------------\n';
             text += `//${post_info.post_auth}(UID: ${post_info.post_auth_id}) ${post_info.sub_time}\n`;
             text += `//PID:${post_info.post_id}\n`;
             text += post_info.post_text;
-            if (type != 'main') { text += '\n---------------->\n'; }
+            if (type != 'main')
+                text += '\n---------------->\n';
+            if (type == 'main')
+                break;
         }
         return { 'text': text, 'image': [] };
     }
@@ -96,7 +105,7 @@
         };
     }
 
-    unsafeWindow.saveThread = function (type = 'main') {
+    unsafeWindow.saveThread = async function (type = 'main') {
         const thread_id = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a').href.split('tid=')[1];
         let title_name = $('#thread_subject').parentNode.textContent.replaceAll('\n', '').replaceAll('[', '【').replaceAll(']', '】');
         let file_info = `Link: ${location.href}\n****************\n`;
@@ -105,40 +114,83 @@
             case 'main': {
                 let filename = title_name;
                 let content = file_info;
-                content += getPageContent(document, 'main').text;
-                saveFile(filename, content);
+                content += (await getPageContent(document, 'main')).text;
+                console.log(content);
             }
                 break;
-            case 'thread': {
+            case 'author': {
                 let filename = title_name + '（全贴）';
                 let content = file_info;
                 const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.replace('共 ', '').replace(' 页', '');
                 for (let page_id = 1; page_id <= page_num; page_id++) {
                     const http_request = new XMLHttpRequest();
-                    const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&extra=&authorid=${thread_auth_id}&page=${page_id}`;
+                    const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&authorid=${thread_auth_id}&page=${page_id}`;
                     http_request.open('GET', url, false);
                     http_request.send()
 
                     const page_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
-                    const page_content = getPageContent(page_doc, 'page').text;
+                    const page_content = (await getPageContent(page_doc, 'page')).text;
                     content += page_content;
 
                 }
                 saveFile(filename, content);
             }
                 break;
+            case 'checked': {
+                let filename = title_name + '（节选）';
+                let content = file_info;
+                const is_only_someone = location.href.match('authorid=[1-9]{1,}');
+                const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.replace('共 ', '').replace(' 页', '');
+                for (let page_id = 1; page_id <= page_num; page_id++) {
+                    const http_request = new XMLHttpRequest();
+                    let url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&page=${page_id}`;
+                    if (is_only_someone)
+                        url += `&${is_only_someone[0]}`;
+                    http_request.open('GET', url, false);
+                    http_request.send()
+
+                    const page_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
+                    const page_content = (await getPageContent(page_doc, 'checked')).text;
+                    content += page_content;
+
+                }
+                saveFile(filename, content);
+
+            }
+                break;
         }
     }
 
-    function insertLink(text, func, pos, sister = null) {
+    unsafeWindow.recordCheckbox = function (id, checked) {
+        GM.setValue(id, checked);
+    }
+
+    function insertLink(text, func, pos, type = 'append') {
         const a = document.createElement('a');
         a.href = 'javascript:void(0)';
         a.textContent = text;
         a.setAttribute('onclick', func);
-        if (sister) {
-            sister.parentNode.insertBefore(a, sister);
-        } else {
-            pos.appendChild(a);
+
+        switch (type) {
+            case 'append':
+                pos.appendChild(a);
+                break;
+            case 'insertBefore':
+                pos.parentNode.insertBefore(a, pos);
+                break;
+        }
+    }
+
+    async function insertCheckbox() {
+        const post_in_page = $$('[class^=post_gender', $('#postlist'));
+
+        for (let post of post_in_page) {
+            const pid = post.id.split('post_')[1];
+            const label = document.createElement('label');
+            const checked = await GM.getValue('check_' + pid, false) ? 'checked' : '';
+            label.className = 'xl xl2 o cl';
+            label.innerHTML = `保存本层 <input type='checkbox' class='pc' id='check_${pid}' ${checked} onchange='window.recordCheckbox(this.id, this.checked)'>`;
+            $('tbody > tr:nth-child(1) > td.pls > div', post).appendChild(label);
         }
     }
 
@@ -158,11 +210,14 @@
 
     const is_only_author = location.href.includes('authorid=' + thread_auth_id);
 
-    if (is_fisrt_page) {
-        insertLink('保存主楼', 'window.saveThread()', $('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
-    }
+    insertCheckbox();
 
-    if (is_only_author && is_fisrt_page) {
-        insertLink('保存全贴', 'window.saveThread("thread")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+    if (is_fisrt_page) {
+        insertLink('保存主楼  ', 'window.saveThread()', $('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
+
+        if (is_only_author)
+            insertLink('保存作者  ', 'window.saveThread("author")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+
+        insertLink('保存选中  ', 'window.saveThread("checked")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 })();
