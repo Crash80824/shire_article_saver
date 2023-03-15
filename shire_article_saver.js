@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.2.2.2
+// @version      0.3
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -19,7 +19,9 @@
 
     const $ = (selector, parent = document) => parent.querySelector(selector);
     const $$ = (selector, parent = document) => parent.querySelectorAll(selector);
+
     const isFirstPage = () => !location.href.match(/page=([2-9]|[1-9]\d+)/);
+    const hasThreadInPage = (doc = document) => $('#delform > table > tbody > tr:not(.th)', doc).childNodes.length > 3;
 
     function getThreadAuthorInfo() {
         let thread_auth_name = '';
@@ -162,7 +164,7 @@
             case 'checked': {
                 let filename = title_name + '（节选）';
                 let content = file_info;
-                const is_only_someone = location.href.match('authorid=[1-9]{1,}');
+                const is_only_someone = location.href.match('authorid=[0-9]{1,}');
                 const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.replace('共 ', '').replace(' 页', '');
                 for (let page_id = 1; page_id <= page_num; page_id++) {
                     const http_request = new XMLHttpRequest();
@@ -185,6 +187,50 @@
         }
     }
 
+    unsafeWindow.saveMergedThreads = async function () {
+        const uid = location.href.match('uid=[0-9]{1,}')[0].split('=')[1];
+        let checkedThreads = [];
+        for (let page_id = 1; ; page_id++) {
+            const http_request = new XMLHttpRequest();
+            let url = `https://${location.host}/main/home.php?mod=space&uid=${uid}&do=thread&page=${page_id}`;
+
+            http_request.open('GET', url, false);
+            http_request.send();
+
+            const page_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
+            if (!hasThreadInPage(page_doc)) {
+                break;
+            }
+
+            const thread_in_page = $$('tr:not(.th)', $('#delform > table > tbody'), page_doc);
+            for (let thread of thread_in_page) {
+                const link = $('th > a', thread);
+                const tid = link.href.split('tid=')[1];
+
+                if ((await GM.getValue('thread_check_' + tid, false)) == false) {
+                    continue;
+                }
+
+                checkedThreads.push(tid);
+            }
+        }
+
+        let filename = '合并贴';
+        let content = '';
+        for (let tid of checkedThreads.sort()) {
+            const http_request = new XMLHttpRequest();
+            const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${tid}`;
+
+            http_request.open('GET', url, false);
+            http_request.send();
+
+            const thread_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
+            const thread_content = (await getPageContent(thread_doc, 'main')).text;
+            content += thread_content;
+        }
+        saveFile(filename, content);
+    }
+
     unsafeWindow.recordCheckbox = function (id, checked) {
         GM.setValue(id, checked);
     }
@@ -202,11 +248,14 @@
             case 'insertBefore':
                 pos.parentNode.insertBefore(a, pos);
                 break;
+            case 'insertAfter':
+                pos.parentNode.insertBefore(a, pos.nextSibling);
+                break;
         }
     }
 
-    async function insertCheckbox() {
-        const post_in_page = $$('[class^=post_gender', $('#postlist'));
+    async function insertPostCheckbox() {
+        const post_in_page = $$('[class^=post_gender]', $('#postlist'));
 
         for (let post of post_in_page) {
             const pid = post.id.split('post_')[1];
@@ -218,11 +267,29 @@
         }
     }
 
-    function modify_thread_page() {
+    async function insertSpaceCheckbox() {
+        const thread_in_page = $$('tr:not(.th)', $('#delform > table > tbody'));
+
+        for (let thread of thread_in_page) {
+            const link = $('th > a', thread);
+            const tid = link.href.split('tid=')[1];
+            const checkbox = document.createElement('input');
+            checkbox.id = 'thread_check_' + tid;
+            checkbox.type = 'checkbox';
+            checkbox.className = 'pc';
+            if (await GM.getValue('thread_check_' + tid, false)) {
+                checkbox.checked = true;
+            }
+            checkbox.setAttribute('onchange', 'window.recordCheckbox(this.id, this.checked)');
+            link.parentNode.insertBefore(checkbox, link);
+        }
+    }
+
+    function modifyPostPage() {
         const author = getThreadAuthorInfo();
         const is_only_author = location.href.includes('authorid=' + author.id);
 
-        insertCheckbox();
+        insertPostCheckbox();
 
         if (isFirstPage()) {
             insertLink('保存主楼  ', 'window.saveThread()', $('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
@@ -235,7 +302,22 @@
         insertLink('保存选中  ', 'window.saveThread("checked")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 
+    function modifySpacePage() {
+        if (location.href.includes('do=thread')) {
+            if (hasThreadInPage()) {
+                insertSpaceCheckbox();
+            }
+
+            const pos = $('#delform > table > tbody > tr.th > th');
+            insertLink('  合并保存选中', 'window.saveMergedThreads()', pos);
+        }
+    }
+
     if (location.href.includes('forum.php?mod=viewthread')) {
-        modify_thread_page();
+        modifyPostPage();
+    }
+
+    if (location.href.includes('home.php?mod=space')) {
+        modifySpacePage();
     }
 })();
