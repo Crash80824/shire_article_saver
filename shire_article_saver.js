@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.2.2.1
+// @version      0.2.2.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
 // @match        https://www.shishirere.com/main/forum.php?mod=viewthread*
+// @match        https://www.shireyishunjian.com/main/home.php?mod=space*
+// @match        https://www.shishirere.com/main/home.php?mod=space*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
 // @grant        unsafeWindow
 // @grant        GM.getValue
@@ -17,6 +19,22 @@
 
     const $ = (selector, parent = document) => parent.querySelector(selector);
     const $$ = (selector, parent = document) => parent.querySelectorAll(selector);
+    const isFirstPage = () => !location.href.match(/page=([2-9]|[1-9]\d+)/);
+
+    function getThreadAuthorInfo() {
+        let thread_auth_name = '';
+        let thread_auth_id = '';
+        if (isFirstPage()) {
+            const first_post_info = getPostInfo($('#postlist > div'));
+            thread_auth_name = first_post_info.post_auth;
+            thread_auth_id = first_post_info.post_auth_id;
+        }
+        else {
+            thread_auth_name = $('#tath > a:nth-child(1)').title;
+            thread_auth_id = $('#tath > a:nth-child(1)').href.split('uid=')[1];
+        }
+        return { 'name': thread_auth_name, 'id': thread_auth_id };
+    }
 
     function getPostContent(pid, page_doc = document) {
         const tf = $('#postmessage_' + pid, page_doc);
@@ -75,19 +93,23 @@
         for (let post of post_in_page) {
             if (type == 'checked') {
                 const checked = await GM.getValue('post_check_' + getPostId(post), false);
-                if (!checked)
+                if (!checked) {
                     continue;
+                }
             }
             const post_info = getPostInfo(post, page_doc);
-            if (type != 'main')
+            if (type != 'main') {
                 text += '<----------------\n';
+            }
             text += `//${post_info.post_auth}(UID: ${post_info.post_auth_id}) ${post_info.sub_time}\n`;
             text += `//PID:${post_info.post_id}\n`;
             text += post_info.post_text;
-            if (type != 'main')
+            if (type != 'main') {
                 text += '\n---------------->\n';
-            if (type == 'main')
+            }
+            if (type == 'main') {
                 break;
+            }
         }
         return { 'text': text, 'image': [] };
     }
@@ -115,16 +137,17 @@
                 let filename = title_name;
                 let content = file_info;
                 content += (await getPageContent(document, 'main')).text;
-                console.log(content);
+                saveFile(filename, content);
             }
                 break;
             case 'author': {
                 let filename = title_name + '（全贴）';
                 let content = file_info;
+                const author = getThreadAuthorInfo();
                 const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.replace('共 ', '').replace(' 页', '');
                 for (let page_id = 1; page_id <= page_num; page_id++) {
                     const http_request = new XMLHttpRequest();
-                    const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&authorid=${thread_auth_id}&page=${page_id}`;
+                    const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&authorid=${author.id}&page=${page_id}`;
                     http_request.open('GET', url, false);
                     http_request.send()
 
@@ -144,8 +167,9 @@
                 for (let page_id = 1; page_id <= page_num; page_id++) {
                     const http_request = new XMLHttpRequest();
                     let url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&page=${page_id}`;
-                    if (is_only_someone)
+                    if (is_only_someone) {
                         url += `&${is_only_someone[0]}`;
+                    }
                     http_request.open('GET', url, false);
                     http_request.send()
 
@@ -194,30 +218,24 @@
         }
     }
 
-    const is_fisrt_page = !location.href.match(/page=([2-9]|[1-9]\d+)/);
+    function modify_thread_page() {
+        const author = getThreadAuthorInfo();
+        const is_only_author = location.href.includes('authorid=' + author.id);
 
-    let thread_auth_name = '';
-    let thread_auth_id = '';
-    if (is_fisrt_page) {
-        const first_post_info = getPostInfo($('#postlist > div'));
-        thread_auth_name = first_post_info.post_auth;
-        thread_auth_id = first_post_info.post_auth_id;
-    }
-    else {
-        thread_auth_name = $('#tath > a:nth-child(1)').title;
-        thread_auth_id = $('#tath > a:nth-child(1)').href.split('uid=')[1];
-    }
+        insertCheckbox();
 
-    const is_only_author = location.href.includes('authorid=' + thread_auth_id);
+        if (isFirstPage()) {
+            insertLink('保存主楼  ', 'window.saveThread()', $('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
 
-    insertCheckbox();
+            if (is_only_author) {
+                insertLink('保存作者  ', 'window.saveThread("author")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+            }
+        }
 
-    if (is_fisrt_page) {
-        insertLink('保存主楼  ', 'window.saveThread()', $('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
-
-        if (is_only_author)
-            insertLink('保存作者  ', 'window.saveThread("author")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+        insertLink('保存选中  ', 'window.saveThread("checked")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 
-    insertLink('保存选中  ', 'window.saveThread("checked")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+    if (location.href.includes('forum.php?mod=viewthread')) {
+        modify_thread_page();
+    }
 })();
