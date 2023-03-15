@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.3.0.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -202,7 +202,7 @@
                 break;
             }
 
-            const thread_in_page = $$('tr:not(.th)', $('#delform > table > tbody'), page_doc);
+            const thread_in_page = $$('tr:not(.th)', $('#delform > table > tbody', page_doc));
             for (let thread of thread_in_page) {
                 const link = $('th > a', thread);
                 const tid = link.href.split('tid=')[1];
