@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.2.1.3
+// @version      0.2.1.4
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -130,7 +130,20 @@
         }
     }
 
+    function insertLink(text, func, pos, sister = null) {
+        const a = document.createElement('a');
+        a.href = 'javascript:void(0)';
+        a.textContent = text;
+        a.setAttribute('onclick', func);
+        if (sister) {
+            sister.parentNode.insertBefore(a, sister);
+        } else {
+            pos.appendChild(a);
+        }
+    }
+
     const is_fisrt_page = !location.href.match(/page=([2-9]|[1-9]\d+)/);
+
     let thread_auth_name = '';
     let thread_auth_id = '';
     if (is_fisrt_page) {
@@ -143,22 +156,13 @@
         thread_auth_id = $('#tath > a:nth-child(1)').href.split('uid=')[1];
     }
 
+    const is_only_author = location.href.includes('authorid=' + thread_auth_id);
 
     if (is_fisrt_page) {
-        const download_pos = $('table > tbody > tr:nth-child(1) > td.plc > div.pi > strong', $('#postlist > div'));
-        const download_href = document.createElement('a');
-        download_href.innerHTML = '保存主楼';
-        download_href.href = 'javascript:void(0)';
-        download_href.setAttribute('onclick', 'window.saveThread()');
-        download_pos.appendChild(download_href);
+        insertLink('保存主楼', 'window.saveThread()', $('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
     }
 
-    if (location.href.includes('authorid=' + thread_auth_id) && is_fisrt_page) {
-        const download_pos = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div')
-        const download_href = document.createElement('a');
-        download_href.innerHTML = '保存全贴';
-        download_href.href = 'javascript:void(0)';
-        download_href.setAttribute('onclick', 'window.saveThread("thread")');
-        download_pos.appendChild(download_href);
+    if (is_only_author && is_fisrt_page) {
+        insertLink('保存全贴', 'window.saveThread("thread")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 })();
