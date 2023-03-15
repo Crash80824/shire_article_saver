@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3.0.1
+// @version      0.3.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -277,11 +277,15 @@
             checkbox.id = 'thread_check_' + tid;
             checkbox.type = 'checkbox';
             checkbox.className = 'pc';
+            
+            link.parentNode.insertBefore(checkbox, link);
+
             if (await GM.getValue('thread_check_' + tid, false)) {
                 checkbox.checked = true;
             }
+
             checkbox.setAttribute('onchange', 'window.recordCheckbox(this.id, this.checked)');
-            link.parentNode.insertBefore(checkbox, link);
+            
         }
     }
 
@@ -310,6 +314,13 @@
 
             const pos = $('#delform > table > tbody > tr.th > th');
             insertLink('  合并保存选中', 'window.saveMergedThreads()', pos);
+        }
+        if ($('#toptb > div.z')) {
+            const a = document.createElement('a');
+            const uid = location.href.match('uid=[0-9]{1,}')[0].split('=')[1];
+            a.textContent = '主题';
+            a.href = `https://${location.host}/main/home.php?mod=space&uid=${uid}&do=thread&from=space`;
+            $('#toptb > div.z').appendChild(a);
         }
     }
 
