@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.2.2
+// @version      0.2.2.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -74,7 +74,7 @@
         let text = '';
         for (let post of post_in_page) {
             if (type == 'checked') {
-                const checked = await GM.getValue('check_' + getPostId(post), false);
+                const checked = await GM.getValue('post_check_' + getPostId(post), false);
                 if (!checked)
                     continue;
             }
@@ -187,9 +187,9 @@
         for (let post of post_in_page) {
             const pid = post.id.split('post_')[1];
             const label = document.createElement('label');
-            const checked = await GM.getValue('check_' + pid, false) ? 'checked' : '';
+            const checked = await GM.getValue('post_check_' + pid, false) ? 'checked' : '';
             label.className = 'xl xl2 o cl';
-            label.innerHTML = `保存本层 <input type='checkbox' class='pc' id='check_${pid}' ${checked} onchange='window.recordCheckbox(this.id, this.checked)'>`;
+            label.innerHTML = `保存本层 <input type='checkbox' class='pc' id='post_check_${pid}' ${checked} onchange='window.recordCheckbox(this.id, this.checked)'>`;
             $('tbody > tr:nth-child(1) > td.pls > div', post).appendChild(label);
         }
     }
@@ -217,7 +217,7 @@
 
         if (is_only_author)
             insertLink('保存作者  ', 'window.saveThread("author")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
-
-        insertLink('保存选中  ', 'window.saveThread("checked")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
+
+    insertLink('保存选中  ', 'window.saveThread("checked")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
 })();
