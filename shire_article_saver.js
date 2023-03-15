@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3.1
+// @version      0.3.1.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -279,6 +279,11 @@
             checkbox.className = 'pc';
             
             link.parentNode.insertBefore(checkbox, link);
+
+            if ($('td:nth-child(3) > a', thread).textContent == '保密存档') {
+                checkbox.disabled = true;
+                continue;
+            }
 
             if (await GM.getValue('thread_check_' + tid, false)) {
                 checkbox.checked = true;
