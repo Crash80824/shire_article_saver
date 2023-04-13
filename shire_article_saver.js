@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3.2.1
+// @version      0.3.2.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -27,9 +27,9 @@
         return obj;
     };
 
-    const hasReadPermission = (doc = document) => !Boolean($('messagetext', doc));
-    const isFirstPage = (doc = document) => !Boolean(doc.URL.parseURL().page) || doc.URL.parseURL().page == 1;
-    const hasThreadInPage = (doc = document) => Boolean($('#delform > table > tbody > tr:not(.th)', doc)) && $('#delform > table > tbody > tr:not(.th)', doc).childNodes.length > 3; // TODO 应该考虑页面类型，而非所有类型的页面都要判断
+    const hasReadPermission = (doc = document) => !Boolean($('#messagetext', doc));
+    const isFirstPage = (doc = document) => { const page = doc.URL.parseURL().page; return !Boolean(page) || page == 1; }
+    const hasThreadInPage = (doc = document) => { const thread_list = $('#delform > table > tbody > tr:not(.th)', doc); return Boolean(thread_list) && thread_list.childNodes.length > 3; }
 
     function getThreadAuthorInfo() {
         let thread_auth_name = '';
@@ -204,6 +204,7 @@
         let filename = '合并贴';
         let content = '';
         for (let tid of checked_threads.sort()) {
+            let thread_content = '';
             const http_request = new XMLHttpRequest();
             const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${tid}`;
 
@@ -211,7 +212,12 @@
             http_request.send();
 
             const thread_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
-            const thread_content = (await getPageContent(thread_doc, 'main')).text;
+            if (hasReadPermission(thread_doc)) {
+                thread_content += (await getPageContent(thread_doc, 'main')).text;
+            }
+            else {
+                thread_content += '没有权限查看此贴\n';
+            }
             content += thread_content;
         }
         saveFile(filename, content);
