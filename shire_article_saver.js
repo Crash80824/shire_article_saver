@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3.1.3
+// @version      0.3.1.3.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -28,7 +28,7 @@
     };
 
     const hasReadPermission = (doc = document) => !Boolean($('messagetext', doc));
-    const isFirstPage = (doc = document) => !(doc.URL.parseURL().page != 1);
+    const isFirstPage = (doc = document) => !Boolean(doc.URL.parseURL().page) || doc.URL.parseURL().page == 1;
     const hasThreadInPage = (doc = document) => Boolean($('#delform > table > tbody > tr:not(.th)', doc)) && $('#delform > table > tbody > tr:not(.th)', doc).childNodes.length > 3; // TODO 应该考虑页面类型，而非所有类型的页面都要判断
 
     function getThreadAuthorInfo() {
