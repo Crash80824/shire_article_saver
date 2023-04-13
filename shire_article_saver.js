@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3.1.4
+// @version      0.3.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -96,14 +96,16 @@
     }
 
     async function getPageContent(page_doc, type = 'main') {
+        const tid = page_doc.URL.parseURL().tid;
+        const checked_posts = await GM.getValue(tid + '_checked_posts', []);
         const postlist = $('#postlist', page_doc);
         const post_in_page = $$('[class^=post_gender]', postlist);
 
         let text = '';
         for (let post of post_in_page) {
             if (type == 'checked') {
-                const checked = await GM.getValue('post_check_' + getPostId(post), false);
-                if (!checked) {
+                const post_id = getPostId(post);
+                if (!checked_posts.includes(post_id)) {
                     continue;
                 }
             }
@@ -173,7 +175,7 @@
                 let filename = title_name + '（节选）';
                 let content = file_info;
                 const specific_authorid = location.href.parseURL().authorid;
-                const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.replace('共 ', '').replace(' 页', '');//TODO
+                const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
                 for (let page_id = 1; page_id <= page_num; page_id++) {
                     const http_request = new XMLHttpRequest();
                     let url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&page=${page_id}`;
@@ -189,7 +191,7 @@
 
                 }
                 saveFile(filename, content);
-
+                GM.deleteValue(thread_id + '_checked_posts');
             }
                 break;
         }
@@ -197,35 +199,11 @@
 
     unsafeWindow.saveMergedThreads = async function () {
         const uid = location.href.parseURL().uid;
-        let checkedThreads = [];
-        for (let page_id = 1; ; page_id++) {
-            const http_request = new XMLHttpRequest();
-            let url = `https://${location.host}/main/home.php?mod=space&uid=${uid}&do=thread&page=${page_id}`;
-
-            http_request.open('GET', url, false);
-            http_request.send();
-
-            const page_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
-            if (!hasThreadInPage(page_doc)) {
-                break;
-            }
-
-            const thread_in_page = $$('tr:not(.th)', $('#delform > table > tbody', page_doc));
-            for (let thread of thread_in_page) {
-                const link = $('th > a', thread);
-                const tid = link.href.parseURL().tid;
-
-                if ((await GM.getValue('thread_check_' + tid, false)) == false) {
-                    continue;
-                }
-
-                checkedThreads.push(tid);
-            }
-        }
+        let checked_threads = await GM.getValue(uid + '_checked_threads', []);
 
         let filename = '合并贴';
         let content = '';
-        for (let tid of checkedThreads.sort()) {
+        for (let tid of checked_threads.sort()) {
             const http_request = new XMLHttpRequest();
             const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${tid}`;
 
@@ -237,10 +215,22 @@
             content += thread_content;
         }
         saveFile(filename, content);
+        GM.deleteValue(uid + '_checked_threads');
     }
 
-    unsafeWindow.recordCheckbox = function (id, checked) {
-        GM.setValue(id, checked);
+    unsafeWindow.recordCheckbox = async function (value, id, checked) {
+        let checked_list = await GM.getValue(value, []);
+        console.log(id);
+        id = id.split('_check_')[1];
+        console.log(id);
+        if (checked && !checked_list.includes(id)) {
+            checked_list.push(id);
+        }
+        if (!checked && checked_list.includes(id)) {
+            checked_list.splice(checked_list.indexOf(id), 1);
+        }
+        console.log(checked_list);
+        GM.setValue(value, checked_list);
     }
 
     function insertLink(text, func, pos, type = 'append') {
@@ -263,19 +253,24 @@
     }
 
     async function insertPostCheckbox() {
+        const tid = location.href.parseURL().tid;
+        const checked_posts = await GM.getValue(tid + '_checked_posts', []);
         const post_in_page = $$('[class^=post_gender]', $('#postlist'));
 
         for (let post of post_in_page) {
             const pid = post.id.split('post_')[1];
             const label = document.createElement('label');
-            const checked = await GM.getValue('post_check_' + pid, false) ? 'checked' : '';
+            const checked = checked_posts.includes(pid) ? 'checked' : '';
             label.className = 'xl xl2 o cl';
-            label.innerHTML = `保存本层 <input type='checkbox' class='pc' id='post_check_${pid}' ${checked} onchange='window.recordCheckbox(this.id, this.checked)'>`;
+            label.innerHTML = `保存本层 <input type='checkbox' class='pc' id='post_check_${pid}' ${checked} onchange='window.recordCheckbox("${tid}_checked_posts", this.id, this.checked)'>`;
             $('tbody > tr:nth-child(1) > td.pls > div', post).appendChild(label);
         }
     }
 
     async function insertSpaceCheckbox() {
+        const uid = location.href.parseURL().uid;
+        const checked_threads = await GM.getValue(uid + '_checked_threads', []);
+        console.log(checked_threads);
         const thread_in_page = $$('tr:not(.th)', $('#delform > table > tbody'));
 
         for (let thread of thread_in_page) {
@@ -285,6 +280,7 @@
             checkbox.id = 'thread_check_' + tid;
             checkbox.type = 'checkbox';
             checkbox.className = 'pc';
+            checkbox.checked = checked_threads.includes(tid);
 
             link.parentNode.insertBefore(checkbox, link);
 
@@ -293,11 +289,8 @@
                 continue;
             }
 
-            if (await GM.getValue('thread_check_' + tid, false)) {
-                checkbox.checked = true;
-            }
-
-            checkbox.setAttribute('onchange', 'window.recordCheckbox(this.id, this.checked)');
+            console.log('here');
+            checkbox.setAttribute('onchange', `window.recordCheckbox("${uid}_checked_threads", this.id, this.checked)`);
 
         }
     }
@@ -324,11 +317,11 @@
     }
 
     function modifySpacePage() {
-        let URLInfo = location.href.parseURL();
-        if (!Boolean(URLInfo.type)) {
-            URLInfo.type = 'thread'
+        let URL_info = location.href.parseURL();
+        if (!Boolean(URL_info.type)) {
+            URL_info.type = 'thread'
         }
-        if (URLInfo.do == 'thread' && URLInfo.type == 'thread') {
+        if (URL_info.do == 'thread' && URL_info.type == 'thread') {
             if (hasThreadInPage()) {
                 insertSpaceCheckbox();
             }
