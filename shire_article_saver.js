@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3.1.2
+// @version      0.3.1.3
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -23,7 +23,7 @@
         let obj = {};
         this.replace(/([^?=&#]+)=([^?=&#]+)/g, (_, key, value) => { obj[key] = value });
         this.replace(/#([^?=&#]+)/g, (_, hash) => { obj.hash = hash });
-        this.replace(/(\w+)\.php/, (_, type) => { obj.type = type });
+        this.replace(/(\w+)\.php/, (_, loc) => { obj.loc = loc });
         return obj;
     };
 
@@ -154,7 +154,7 @@
                 let filename = title_name + '（全贴）';
                 let content = file_info;
                 const author = getThreadAuthorInfo();
-                const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.replace('共 ', '').replace(' 页', '');
+                const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
                 for (let page_id = 1; page_id <= page_num; page_id++) {
                     const http_request = new XMLHttpRequest();
                     const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&authorid=${author.id}&page=${page_id}`;
@@ -324,7 +324,11 @@
     }
 
     function modifySpacePage() {
-        if (location.href.parseURL().do == 'thread') {
+        let URLInfo = location.href.parseURL();
+        if (!Boolean(URLInfo.type)) {
+            URLInfo.type = 'thread'
+        }
+        if (URLInfo.do == 'thread' && URLInfo.type == 'thread') {
             if (hasThreadInPage()) {
                 insertSpaceCheckbox();
             }
@@ -343,11 +347,11 @@
 
     const locationParams = location.href.parseURL();
 
-    if (locationParams.type == 'forum' && locationParams.mod == 'viewthread') {
+    if (locationParams.loc == 'forum' && locationParams.mod == 'viewthread') {
         modifyPostPage();
     }
 
-    if (locationParams.type == 'home' && locationParams.mod == 'space') {
+    if (locationParams.loc == 'home' && locationParams.mod == 'space') {
         modifySpacePage();
     }
 })();
