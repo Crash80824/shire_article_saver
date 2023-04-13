@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3.2
+// @version      0.3.2.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -220,16 +220,13 @@
 
     unsafeWindow.recordCheckbox = async function (value, id, checked) {
         let checked_list = await GM.getValue(value, []);
-        console.log(id);
         id = id.split('_check_')[1];
-        console.log(id);
         if (checked && !checked_list.includes(id)) {
             checked_list.push(id);
         }
         if (!checked && checked_list.includes(id)) {
             checked_list.splice(checked_list.indexOf(id), 1);
         }
-        console.log(checked_list);
         GM.setValue(value, checked_list);
     }
 
@@ -270,7 +267,6 @@
     async function insertSpaceCheckbox() {
         const uid = location.href.parseURL().uid;
         const checked_threads = await GM.getValue(uid + '_checked_threads', []);
-        console.log(checked_threads);
         const thread_in_page = $$('tr:not(.th)', $('#delform > table > tbody'));
 
         for (let thread of thread_in_page) {
@@ -289,7 +285,6 @@
                 continue;
             }
 
-            console.log('here');
             checkbox.setAttribute('onchange', `window.recordCheckbox("${uid}_checked_threads", this.id, this.checked)`);
 
         }
