@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3.2.2
+// @version      0.3.2.3
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -297,10 +297,6 @@
     }
 
     function modifyPostPage() {
-        if (!hasReadPermission()) {
-            return
-        }
-
         const author = getThreadAuthorInfo();
         const is_only_author = location.href.parseURL().authorid == author.id;
 
@@ -341,11 +337,14 @@
 
     const locationParams = location.href.parseURL();
 
-    if (locationParams.loc == 'forum' && locationParams.mod == 'viewthread') {
-        modifyPostPage();
+    if (hasReadPermission()) {
+        if (locationParams.loc == 'forum' && locationParams.mod == 'viewthread') {
+            modifyPostPage();
+        }
+
+        if (locationParams.loc == 'home' && locationParams.mod == 'space') {
+            modifySpacePage();
+        }
     }
 
-    if (locationParams.loc == 'home' && locationParams.mod == 'space') {
-        modifySpacePage();
-    }
 })();
