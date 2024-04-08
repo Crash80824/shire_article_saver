@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3.2.3
+// @version      0.3.2.4
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -17,8 +17,8 @@
 (function () {
     'use strict';
 
-    const $ = (selector, parent = document) => parent.querySelector(selector);
-    const $$ = (selector, parent = document) => parent.querySelectorAll(selector);
+    const qS = (selector, parent = document) => parent.querySelector(selector);
+    const qSA = (selector, parent = document) => parent.querySelectorAll(selector);
     String.prototype.parseURL = function () {
         let obj = {};
         this.replace(/([^?=&#]+)=([^?=&#]+)/g, (_, key, value) => { obj[key] = value });
@@ -27,27 +27,14 @@
         return obj;
     };
 
-    const hasReadPermission = (doc = document) => !Boolean($('#messagetext', doc));
+    const hasReadPermission = (doc = document) => !Boolean(qS('#messagetext', doc));
     const isFirstPage = (doc = document) => { const page = doc.URL.parseURL().page; return !Boolean(page) || page == 1; }
-    const hasThreadInPage = (doc = document) => { const thread_list = $('#delform > table > tbody > tr:not(.th)', doc); return Boolean(thread_list) && thread_list.childNodes.length > 3; }
-
-    function getThreadAuthorInfo() {
-        let thread_auth_name = '';
-        let thread_auth_id = '';
-        if (isFirstPage()) {
-            const first_post_info = getPostInfo($('#postlist > div'));
-            thread_auth_name = first_post_info.post_auth;
-            thread_auth_id = first_post_info.post_auth_id;
-        }
-        else {
-            thread_auth_name = $('#tath > a:nth-child(1)').title;
-            thread_auth_id = $('#tath > a:nth-child(1)').href.parseURL().uid;
-        }
-        return { 'name': thread_auth_name, 'id': thread_auth_id };
-    }
-
+    const hasThreadInPage = (doc = document) => { const thread_list = qS('#delform > table > tbody > tr:not(.th)', doc); return Boolean(thread_list) && thread_list.childNodes.length > 3; }
+    
+    const getPostId = post => post.id.split('_')[1];
+    
     function getPostContent(pid, page_doc = document) {
-        const tf = $('#postmessage_' + pid, page_doc);
+        const tf = qS('#postmessage_' + pid, page_doc);
         let childrenNodes = tf.childNodes;
         let text = '';
         for (let child of childrenNodes) {
@@ -55,7 +42,7 @@
                 case 'DIV.quote':
                     {
                         text += '<<<\n';
-                        let quote_href = $('td > div > blockquote > font > a', child);
+                        let quote_href = qS('td > div > blockquote > font > a', child);
                         if (quote_href) {
                             let origin_quote = quote_href.innerText;
                             quote_href.innerText += ` PID:${quote_href.href.parseURL().pid}`;
@@ -77,15 +64,13 @@
         }
         return { 'text': text, 'image': [] }
     }
-
-    const getPostId = post => post.id.split('_')[1];
-
+    
     function getPostInfo(post, page_doc = document) {
         const post_id = getPostId(post);
-        const thread_id = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a', page_doc).href.parseURL().tid;
-        const post_auth = $('#favatar' + post_id + ' > div.pi > div > a', post).text;
-        const post_auth_id = $('#favatar' + post_id + ' > div.pi > div > a', post).href.parseURL().uid;
-        const sub_time = $('[id^=authorposton]', post).textContent;
+        const thread_id = qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a', page_doc).href.parseURL().tid;
+        const post_auth = qS('#favatar' + post_id + ' > div.pi > div > a', post).text;
+        const post_auth_id = qS('#favatar' + post_id + ' > div.pi > div > a', post).href.parseURL().uid;
+        const sub_time = qS('[id^=authorposton]', post).textContent;
         const post_url = `${page_doc.baseURI}forum.php?mod=redirect&goto=findpost&ptid=${thread_id}&pid=${post_id}`;
         const post_content = getPostContent(post_id, page_doc);
         const post_text = post_content.text;
@@ -95,11 +80,26 @@
         return { 'post_id': post_id, 'post_auth': post_auth, 'post_auth_id': post_auth_id, 'sub_time': sub_time, 'post_url': post_url, 'post_text': post_text, 'post_image': post_image };
     }
 
+    function getThreadAuthorInfo() {
+        let thread_auth_name = '';
+        let thread_auth_id = '';
+        if (isFirstPage()) {
+            const first_post_info = getPostInfo(qS('#postlist > div'));
+            thread_auth_name = first_post_info.post_auth;
+            thread_auth_id = first_post_info.post_auth_id;
+        }
+        else {
+            thread_auth_name = qS('#tath > a:nth-child(1)').title;
+            thread_auth_id = qS('#tath > a:nth-child(1)').href.parseURL().uid;
+        }
+        return { 'name': thread_auth_name, 'id': thread_auth_id };
+    }
+
     async function getPageContent(page_doc, type = 'main') {
         const tid = page_doc.URL.parseURL().tid;
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
-        const postlist = $('#postlist', page_doc);
-        const post_in_page = $$('[class^=post_gender]', postlist);
+        const postlist = qS('#postlist', page_doc);
+        const post_in_page = qSA('[class^=post_gender]', postlist);
 
         let text = '';
         for (let post of post_in_page) {
@@ -140,8 +140,8 @@
     }
 
     unsafeWindow.saveThread = async function (type = 'main') {
-        const thread_id = $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a').href.parseURL().tid;
-        let title_name = $('#thread_subject').parentNode.textContent.replaceAll('\n', '').replaceAll('[', '【').replaceAll(']', '】');
+        const thread_id = qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a').href.parseURL().tid;
+        let title_name = qS('#thread_subject').parentNode.textContent.replaceAll('\n', '').replaceAll('[', '【').replaceAll(']', '】');
         let file_info = `Link: ${location.href}\n****************\n`;
 
         switch (type) {
@@ -156,7 +156,7 @@
                 let filename = title_name + '（全贴）';
                 let content = file_info;
                 const author = getThreadAuthorInfo();
-                const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
+                const page_num = (qS('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
                 for (let page_id = 1; page_id <= page_num; page_id++) {
                     const http_request = new XMLHttpRequest();
                     const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&authorid=${author.id}&page=${page_id}`;
@@ -175,7 +175,7 @@
                 let filename = title_name + '（节选）';
                 let content = file_info;
                 const specific_authorid = location.href.parseURL().authorid;
-                const page_num = ($('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
+                const page_num = (qS('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
                 for (let page_id = 1; page_id <= page_num; page_id++) {
                     const http_request = new XMLHttpRequest();
                     let url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&page=${page_id}`;
@@ -258,7 +258,7 @@
     async function insertPostCheckbox() {
         const tid = location.href.parseURL().tid;
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
-        const post_in_page = $$('[class^=post_gender]', $('#postlist'));
+        const post_in_page = qSA('[class^=post_gender]', qS('#postlist'));
 
         for (let post of post_in_page) {
             const pid = post.id.split('post_')[1];
@@ -266,17 +266,17 @@
             const checked = checked_posts.includes(pid) ? 'checked' : '';
             label.className = 'xl xl2 o cl';
             label.innerHTML = `保存本层 <input type='checkbox' class='pc' id='post_check_${pid}' ${checked} onchange='window.recordCheckbox("${tid}_checked_posts", this.id, this.checked)'>`;
-            $('tbody > tr:nth-child(1) > td.pls > div', post).appendChild(label);
+            qS('tbody > tr:nth-child(1) > td.pls > div', post).appendChild(label);
         }
     }
 
     async function insertSpaceCheckbox() {
         const uid = location.href.parseURL().uid;
         const checked_threads = await GM.getValue(uid + '_checked_threads', []);
-        const thread_in_page = $$('tr:not(.th)', $('#delform > table > tbody'));
+        const thread_in_page = qSA('tr:not(.th)', qS('#delform > table > tbody'));
 
         for (let thread of thread_in_page) {
-            const link = $('th > a', thread);
+            const link = qS('th > a', thread);
             const tid = link.href.parseURL().tid;
             const checkbox = document.createElement('input');
             checkbox.id = 'thread_check_' + tid;
@@ -286,7 +286,7 @@
 
             link.parentNode.insertBefore(checkbox, link);
 
-            if ($('td:nth-child(3) > a', thread).textContent == '保密存档') {
+            if (qS('td:nth-child(3) > a', thread).textContent == '保密存档') {
                 checkbox.disabled = true;
                 continue;
             }
@@ -303,14 +303,14 @@
         insertPostCheckbox();
 
         if (isFirstPage()) {
-            insertLink('保存主楼  ', 'window.saveThread()', $('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
+            insertLink('保存主楼  ', 'window.saveThread()', qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
 
             if (is_only_author) {
-                insertLink('保存作者  ', 'window.saveThread("author")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+                insertLink('保存作者  ', 'window.saveThread("author")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
             }
         }
 
-        insertLink('保存选中  ', 'window.saveThread("checked")', $('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+        insertLink('保存选中  ', 'window.saveThread("checked")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 
     function modifySpacePage() {
@@ -323,15 +323,15 @@
                 insertSpaceCheckbox();
             }
 
-            const pos = $('#delform > table > tbody > tr.th > th');
+            const pos = qS('#delform > table > tbody > tr.th > th');
             insertLink('  合并保存选中', 'window.saveMergedThreads()', pos);
         }
-        if ($('#toptb > div.z')) {
+        if (qS('#toptb > div.z')) {
             const a = document.createElement('a');
             const uid = location.href.parseURL().uid;
             a.textContent = '主题';
             a.href = `https://${location.host}/main/home.php?mod=space&uid=${uid}&do=thread&from=space`;
-            $('#toptb > div.z').appendChild(a);
+            qS('#toptb > div.z').appendChild(a);
         }
     }
 
