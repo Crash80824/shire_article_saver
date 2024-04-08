@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.3.2.4
+// @version      0.4
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -31,7 +31,7 @@
     const isFirstPage = (doc = document) => { const page = doc.URL.parseURL().page; return !Boolean(page) || page == 1; }
     const hasThreadInPage = (doc = document) => { const thread_list = qS('#delform > table > tbody > tr:not(.th)', doc); return Boolean(thread_list) && thread_list.childNodes.length > 3; }
     
-    const getPostId = post => post.id.split('_')[1];
+    const getPostId = post => post.id.slice(5);
     
     function getPostContent(pid, page_doc = document) {
         const tf = qS('#postmessage_' + pid, page_doc);
@@ -99,10 +99,11 @@
         const tid = page_doc.URL.parseURL().tid;
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
         const postlist = qS('#postlist', page_doc);
-        const post_in_page = qSA('[class^=post_gender]', postlist);
+        const post_in_page = qSA('[class^="plhin post_gender"]', postlist);
 
         let text = '';
         for (let post of post_in_page) {
+            post = post.parentNode;
             if (type == 'checked') {
                 const post_id = getPostId(post);
                 if (!checked_posts.includes(post_id)) {
@@ -258,9 +259,10 @@
     async function insertPostCheckbox() {
         const tid = location.href.parseURL().tid;
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
-        const post_in_page = qSA('[class^=post_gender]', qS('#postlist'));
+        const post_in_page = qSA('[class^="plhin post_gender"]', qS('#postlist'));
 
         for (let post of post_in_page) {
+            post = post.parentNode;
             const pid = post.id.split('post_')[1];
             const label = document.createElement('label');
             const checked = checked_posts.includes(pid) ? 'checked' : '';
