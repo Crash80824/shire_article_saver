@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.4.0.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -30,9 +30,9 @@
     const hasReadPermission = (doc = document) => !Boolean(qS('#messagetext', doc));
     const isFirstPage = (doc = document) => { const page = doc.URL.parseURL().page; return !Boolean(page) || page == 1; }
     const hasThreadInPage = (doc = document) => { const thread_list = qS('#delform > table > tbody > tr:not(.th)', doc); return Boolean(thread_list) && thread_list.childNodes.length > 3; }
-    
+
     const getPostId = post => post.id.slice(5);
-    
+
     function getPostContent(pid, page_doc = document) {
         const tf = qS('#postmessage_' + pid, page_doc);
         let childrenNodes = tf.childNodes;
@@ -64,7 +64,7 @@
         }
         return { 'text': text, 'image': [] }
     }
-    
+
     function getPostInfo(post, page_doc = document) {
         const post_id = getPostId(post);
         const thread_id = qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a', page_doc).href.parseURL().tid;
@@ -265,10 +265,18 @@
             post = post.parentNode;
             const pid = post.id.split('post_')[1];
             const label = document.createElement('label');
-            const checked = checked_posts.includes(pid) ? 'checked' : '';
-            label.className = 'xl xl2 o cl';
-            label.innerHTML = `保存本层 <input type='checkbox' class='pc' id='post_check_${pid}' ${checked} onchange='window.recordCheckbox("${tid}_checked_posts", this.id, this.checked)'>`;
+            const label_text = document.createTextNode('保存本层');
+            label.className = 'x1 xl2 o cl';
+            label.appendChild(label_text);
             qS('tbody > tr:nth-child(1) > td.pls > div', post).appendChild(label);
+
+            const checkbox = document.createElement('input');
+            checkbox.id = 'post_check_' + pid;
+            checkbox.type = 'checkbox';
+            checkbox.checked = checked_posts.includes(pid);
+            checkbox.setAttribute('onchange', `window.recordCheckbox("${tid}_checked_posts", this.id, this.checked)`); // 每个Thread设置一个数组，存入被选中的Post的ID
+            label.appendChild(checkbox);
+
         }
     }
 
@@ -278,7 +286,6 @@
         const thread_in_page = qSA('tr:not(.th)', qS('#delform > table > tbody'));
 
         for (let thread of thread_in_page) {
-            const link = qS('th > a', thread);
             const tid = link.href.parseURL().tid;
             const checkbox = document.createElement('input');
             checkbox.id = 'thread_check_' + tid;
@@ -286,14 +293,14 @@
             checkbox.className = 'pc';
             checkbox.checked = checked_threads.includes(tid);
 
-            link.parentNode.insertBefore(checkbox, link);
+            qS('th > a', thread).parentNode.insertBefore(checkbox, link);
 
             if (qS('td:nth-child(3) > a', thread).textContent == '保密存档') {
                 checkbox.disabled = true;
                 continue;
             }
 
-            checkbox.setAttribute('onchange', `window.recordCheckbox("${uid}_checked_threads", this.id, this.checked)`);
+            checkbox.setAttribute('onchange', `window.recordCheckbox("${uid}_checked_threads", this.id, this.checked)`); // 每个用户设置一个数组，存入被选中的Thread的ID
 
         }
     }
