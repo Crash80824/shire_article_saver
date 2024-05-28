@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.4.0.1
+// @version      0.4.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -225,7 +225,7 @@
         GM.deleteValue(uid + '_checked_threads');
     }
 
-    unsafeWindow.recordCheckbox = async function (value, id, checked) {
+    unsafeWindow.recordCheckbox = async function (value, id, checked) { // 根据checkbox的状态更新value对应的数组
         let checked_list = await GM.getValue(value, []);
         id = id.split('_check_')[1];
         if (checked && !checked_list.includes(id)) {
@@ -235,6 +235,26 @@
             checked_list.splice(checked_list.indexOf(id), 1);
         }
         GM.setValue(value, checked_list);
+    }
+
+    unsafeWindow.changePageAllCheckboxs = async function () {
+        const tid = location.href.parseURL().tid;
+        const checkbox_page = qS('#page_checked_all');
+        const checked_for_all = checkbox_page.checked;
+        const checkbox_posts = qSA('input[id^="post_check_"]');
+        let checked_list = await GM.getValue(`${tid}_checked_posts`, []);
+        for (let checkbox of checkbox_posts) {
+            checkbox.checked = checked_for_all;
+            const id = checkbox.id.split('_check_')[1];
+            if (checked_for_all && !checked_list.includes(id)) {
+                checked_list.push(id);
+            }
+            if (!checked_for_all && checked_list.includes(id)) {
+                checked_list.splice(checked_list.indexOf(id), 1);
+            }
+        }
+        console.log(checked_list);
+        GM.setValue(`${tid}_checked_posts`, checked_list);
     }
 
     function insertLink(text, func, pos, type = 'append') {
@@ -260,6 +280,7 @@
         const tid = location.href.parseURL().tid;
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
         const post_in_page = qSA('[class^="plhin post_gender"]', qS('#postlist'));
+        let all_checked = true;
 
         for (let post of post_in_page) {
             post = post.parentNode;
@@ -277,7 +298,20 @@
             checkbox.setAttribute('onchange', `window.recordCheckbox("${tid}_checked_posts", this.id, this.checked)`); // 每个Thread设置一个数组，存入被选中的Post的ID
             label.appendChild(checkbox);
 
+            all_checked = all_checked && checkbox.checked;
         }
+
+        const label = document.createElement('label');
+        const label_text = document.createTextNode(all_checked ? '清空全选' : '全选本页');
+        label.appendChild(label_text);
+        qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div').appendChild(label);
+
+        const checkbox = document.createElement('input');
+        checkbox.id = 'page_checked_all';
+        checkbox.type = 'checkbox';
+        checkbox.checked = all_checked;
+        checkbox.setAttribute('onchange', 'window.changePageAllCheckboxs()');
+        label.appendChild(checkbox);
     }
 
     async function insertSpaceCheckbox() {
@@ -286,6 +320,7 @@
         const thread_in_page = qSA('tr:not(.th)', qS('#delform > table > tbody'));
 
         for (let thread of thread_in_page) {
+            const link = qS('th > a', thread)
             const tid = link.href.parseURL().tid;
             const checkbox = document.createElement('input');
             checkbox.id = 'thread_check_' + tid;
@@ -293,7 +328,7 @@
             checkbox.className = 'pc';
             checkbox.checked = checked_threads.includes(tid);
 
-            qS('th > a', thread).parentNode.insertBefore(checkbox, link);
+            link.parentNode.insertBefore(checkbox, link);
 
             if (qS('td:nth-child(3) > a', thread).textContent == '保密存档') {
                 checkbox.disabled = true;
