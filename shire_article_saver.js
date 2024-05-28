@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.4.1
+// @version      0.4.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
@@ -153,14 +153,26 @@
                 saveFile(filename, content);
             }
                 break;
-            case 'author': {
-                let filename = title_name + '（全贴）';
+            case 'page': {
+                let filename = title_name;
                 let content = file_info;
                 const author = getThreadAuthorInfo();
+                const is_only_author = location.href.parseURL().authorid == author.id;
+                if (is_only_author) {
+                    filename += `（${author.name}）`;
+                }
+                else {
+                    filename += '（全文）';
+                }
+
+
                 const page_num = (qS('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
                 for (let page_id = 1; page_id <= page_num; page_id++) {
                     const http_request = new XMLHttpRequest();
-                    const url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&authorid=${author.id}&page=${page_id}`;
+                    let url = `https://${location.host}/main/forum.php?mod=viewthread&tid=${thread_id}&page=${page_id}`;
+                    if (is_only_author) {
+                        url += `&authorid=${author.id}`;
+                    }
                     http_request.open('GET', url, false);
                     http_request.send()
 
@@ -350,7 +362,10 @@
             insertLink('保存主楼  ', 'window.saveThread()', qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
 
             if (is_only_author) {
-                insertLink('保存作者  ', 'window.saveThread("author")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+                insertLink('保存作者  ', 'window.saveThread("page")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+            }
+            else {
+                insertLink('保存全文  ', 'window.saveThread("page")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
             }
         }
 
