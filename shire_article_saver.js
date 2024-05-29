@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.5.0.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -9,7 +9,9 @@
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
 // @grant        unsafeWindow
 // @grant        GM.getValue
+// @grant        GM_getValue
 // @grant        GM.setValue
+// @grant        GM.deleteValue
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // ==/UserScript==
@@ -28,6 +30,14 @@
         this.replace(/(\w+)\.php/, (_, loc) => { obj.loc = loc });
         return obj;
     };
+
+
+    const location_params = location.href.parseURL();
+    const is_not_mobile = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
+
+    if (!is_not_mobile) {
+        return;
+    }
 
     const hasReadPermission = (doc = document) => !Boolean(qS('#messagetext', doc));
     const isFirstPage = (doc = document) => { const page = doc.URL.parseURL().page; return !Boolean(page) || page == 1; }
@@ -283,9 +293,13 @@
     // 若tid==0，则关注用户的所有主题
     // 若tid==-1, 则关注用户的所有回复
     unsafeWindow.recordFollow = async function (uid, tid, followed) {
-        let follow_threads = await GM.getValue(uid + '_follow_threads', []);
-        follow_threads = updateGMListElements(follow_threads, tid, followed);
-        updateGMList(uid + '_follow_threads', follow_threads);
+        let followed_threads = await GM.getValue(uid + '_followed_threads', []);
+        followed_threads = updateGMListElements(followed_threads, tid, followed);
+        updateGMList(uid + '_followed_threads', followed_threads);
+
+        let followed_users = await GM.getValue('followed_users', []);
+        followed_users = updateGMListElements(followed_users, uid, followed_threads.length > 0);
+        updateGMList('followed_users', followed_users);
     };
 
     function insertLink(text, func, pos, type = 'append') {
@@ -339,11 +353,11 @@
             // 添加关注按钮
             const user_level = qS('[id^=favatar] > p:nth-child(5)', post);
             const follow_btn = document.createElement('button');
-            const follow_status = await GM.getValue(uid + '_follow_threads', []);
+            const follow_status = await GM.getValue(uid + '_followed_threads', []);
             const followed = follow_status.includes(0);
             follow_btn.textContent = followed ? '取关' : '关注';
             follow_btn.addEventListener('click', async () => {
-                const follow_status = await GM.getValue(uid + '_follow_threads', []);
+                const follow_status = await GM.getValue(uid + '_followed_threads', []);
                 const followed = follow_status.includes(0);
                 follow_btn.textContent = !followed ? '取关' : '关注';
                 unsafeWindow.recordFollow(uid, 0, !followed);
@@ -432,11 +446,71 @@
         }
     }
 
-    const location_params = location.href.parseURL();
-    const is_not_mobile = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
+    GM_addStyle(`
+        .floating-popup {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 300px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            font-family: Arial, sans-serif;
+            z-index: 10000;
+        }
+        .floating-popup .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: transparent;
+            color: #ff5c5c;
+            border: none;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .floating-popup .close-btn::after {
+            content: '✖';
+        }
+    `);
 
-    if (!is_not_mobile) {
-        return;
+    function createFloatingPopup(message_list) {
+        const popup = document.createElement('div');
+        popup.className = 'floating-popup';
+        popup.innerHTML = `<button class="close-btn" onclick="this.parentElement.style.display='none'"></button>`;
+        for (let message of message_list) {
+            const p = document.createElement('p');
+            p.textContent = message;
+            popup.appendChild(p);
+        }
+        document.body.appendChild(popup);
+    }
+
+    function getUserNewestThread(uid, message_list) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `https://www.shireyishunjian.com/main/home.php?mod=space&uid=${uid}&do=thread&view=me&from=space&mobile=2`,
+                headers: {
+                    'User-Agent': mobileUA
+                },
+                onload: function (response) {
+                    const page_doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                    const title = qS('#home > div.threadlist.cl > ul > li:nth-child(1) > a:nth-child(2) > div > em', page_doc);
+                    message_list.push(`${uid}的最新主题：` + title.textContent);
+                    resolve(`${uid}的最新主题：` + title.textContent);
+                }
+            }
+            )
+        });
+    }
+
+    const followed_users = GM_getValue('followed_users', []);
+    if (followed_users.length > 0) {
+        let message_list = [];
+        Promise.all(followed_users.map(uid => getUserNewestThread(uid, message_list))).then(() => { createFloatingPopup(message_list) });
     }
 
     if (hasReadPermission()) {
@@ -448,5 +522,6 @@
             modifySpacePage();
         }
     }
+
 
 })();
