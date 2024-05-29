@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.4.2.2
+// @version      0.5
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -242,7 +242,7 @@
             list.push(elem);
         }
         if (!status && list.includes(elem)) {
-            list.splice(list.indexOf(elem), 1);
+            list = list.filter(e => e != elem);
         }
         return list;
     }
@@ -313,9 +313,13 @@
         const post_in_page = getPostInPage();
         let all_checked = true;
 
-        async function insertPostCheckbox(post) {
+        for (let post of post_in_page) {
             post = post.parentNode;
-            const pid = getPostId(post);
+            const post_info = getPostInfo(post);
+            const pid = post_info.post_id;
+            const uid = post_info.post_auth_id;
+
+            // 添加保存复选框
             const label = document.createElement('label');
             const label_text = document.createTextNode('保存本层');
             label.className = 'x1 xl2 o cl';
@@ -330,10 +334,22 @@
             label.appendChild(checkbox);
 
             all_checked = all_checked && checkbox.checked;
-        }
+            // 结束添加保存复选框
 
-        for (let post of post_in_page) {
-            insertPostCheckbox(post)
+            // 添加关注按钮
+            const user_level = qS('[id^=favatar] > p:nth-child(5)', post);
+            const follow_btn = document.createElement('button');
+            const follow_status = await GM.getValue(uid + '_follow_threads', []);
+            const followed = follow_status.includes(0);
+            follow_btn.textContent = followed ? '取关' : '关注';
+            follow_btn.addEventListener('click', async () => {
+                const follow_status = await GM.getValue(uid + '_follow_threads', []);
+                const followed = follow_status.includes(0);
+                follow_btn.textContent = !followed ? '取关' : '关注';
+                unsafeWindow.recordFollow(uid, 0, !followed);
+            });
+            user_level.appendChild(follow_btn);
+            // 结束添加关注按钮
         }
 
         const label = document.createElement('label');
