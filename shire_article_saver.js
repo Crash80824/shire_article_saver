@@ -1,13 +1,11 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.4.2
+// @version      0.4.2.1
 // @description  Download shire thread content.
 // @author       Crash
-// @match        https://www.shireyishunjian.com/main/forum.php?mod=viewthread*
-// @match        https://www.shishirere.com/main/forum.php?mod=viewthread*
-// @match        https://www.shireyishunjian.com/main/home.php?mod=space*
-// @match        https://www.shishirere.com/main/home.php?mod=space*
+// @match        https://www.shireyishunjian.com/*
+// @match        https://www.shishirere.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
 // @grant        unsafeWindow
 // @grant        GM.getValue
@@ -16,6 +14,8 @@
 
 (function () {
     'use strict';
+
+    const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
 
     const qS = (selector, parent = document) => parent.querySelector(selector);
     const qSA = (selector, parent = document) => parent.querySelectorAll(selector);
@@ -237,16 +237,33 @@
         GM.deleteValue(uid + '_checked_threads');
     }
 
-    unsafeWindow.recordCheckbox = async function (value, id, checked) { // 根据checkbox的状态更新value对应的数组
+
+    function updateGMListElements(list, elem, status) {
+        if (status && !list.includes(elem)) {
+            list.push(elem);
+        }
+        if (!status && list.includes(elem)) {
+            list.splice(list.indexOf(elem), 1);
+        }
+        return list;
+    }
+
+    async function updateGMList(list_name, list) {
+        if (list.length == 0) {
+            GM.deleteValue(list_name);
+        }
+        else {
+            GM.setValue(list_name, list);
+        }
+    }
+
+    // 根据checkbox的状态更新value对应的数组
+    // value/id: tid/pid, uid/tid
+    unsafeWindow.recordCheckbox = async function (value, id, checked) {
         let checked_list = await GM.getValue(value, []);
         id = id.split('_check_')[1];
-        if (checked && !checked_list.includes(id)) {
-            checked_list.push(id);
-        }
-        if (!checked && checked_list.includes(id)) {
-            checked_list.splice(checked_list.indexOf(id), 1);
-        }
-        GM.setValue(value, checked_list);
+        checked_list = updateGMListElements(checked_list, id, checked);
+        updateGMList(value, checked_list);
     }
 
     unsafeWindow.changePageAllCheckboxs = async function () {
@@ -258,16 +275,19 @@
         for (let checkbox of checkbox_posts) {
             checkbox.checked = checked_for_all;
             const id = checkbox.id.split('_check_')[1];
-            if (checked_for_all && !checked_list.includes(id)) {
-                checked_list.push(id);
-            }
-            if (!checked_for_all && checked_list.includes(id)) {
-                checked_list.splice(checked_list.indexOf(id), 1);
-            }
+            checked_list = updateGMListElements(checked_list, id, checked_for_all);
         }
-        console.log(checked_list);
-        GM.setValue(`${tid}_checked_posts`, checked_list);
+        updateGMList(`${tid}_checked_posts`, checked_list);
     }
+
+    // 关注某个用户在某个Thread下的回复
+    // 若tid==0，则关注用户的所有主题
+    // 若tid==-1, 则关注用户的所有回复
+    unsafeWindow.recordFollow = async function (uid, tid, followed) {
+        let follow_threads = await GM.getValue(uid + '_follow_threads', []);
+        follow_threads = updateGMListElements(follow_threads, tid, followed);
+        updateGMList(uid + '_follow_threads', follow_threads);
+    };
 
     function insertLink(text, func, pos, type = 'append') {
         const a = document.createElement('a');
@@ -307,7 +327,7 @@
             checkbox.id = 'post_check_' + pid;
             checkbox.type = 'checkbox';
             checkbox.checked = checked_posts.includes(pid);
-            checkbox.setAttribute('onchange', `window.recordCheckbox("${tid}_checked_posts", this.id, this.checked)`); // 每个Thread设置一个数组，存入被选中的Post的ID
+            checkbox.addEventListener('change', () => { unsafeWindow.recordCheckbox(`${tid}_checked_posts`, checkbox.id, checkbox.checked) });// 每个Thread设置一个数组，存入被选中的Post的ID
             label.appendChild(checkbox);
 
             all_checked = all_checked && checkbox.checked;
@@ -347,8 +367,7 @@
                 continue;
             }
 
-            checkbox.setAttribute('onchange', `window.recordCheckbox("${uid}_checked_threads", this.id, this.checked)`); // 每个用户设置一个数组，存入被选中的Thread的ID
-
+            checkbox.addEventListener('change', () => { unsafeWindow.recordCheckbox(`${uid}_checked_threads`, checkbox.id, checkbox.checked) });// 每个用户设置一个数组，存入被选中的Thread的ID
         }
     }
 
@@ -395,6 +414,11 @@
     }
 
     const locationParams = location.href.parseURL();
+    const isNotMobile = locationParams.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
+
+    if (!isNotMobile) {
+        return;
+    }
 
     if (hasReadPermission()) {
         if (locationParams.loc == 'forum' && locationParams.mod == 'viewthread') {
