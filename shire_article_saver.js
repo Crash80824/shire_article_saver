@@ -1,13 +1,12 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.3.1
+// @version      0.5.4
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
 // @match        https://www.shishirere.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
-// @grant        unsafeWindow
 // @grant        GM.getValue
 // @grant        GM_getValue
 // @grant        GM.setValue
@@ -16,7 +15,6 @@
 // @grant        GM_deleteValue
 // @grant        GM.listValues
 // @grant        GM_listValues
-// @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
@@ -58,35 +56,55 @@
     // ========================================================================================================
     // 自定义样式
     // ========================================================================================================
-    GM_addStyle(`
-        .floating-popup {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 300px;
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-            font-family: Arial, sans-serif;
-            z-index: 10000;
-        }
-        .floating-popup .close-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background-color: transparent;
-            color: #ff5c5c;
-            border: none;
-            font-size: 20px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .floating-popup .close-btn::after {
-            content: '✖';
-        }
-        `);
+    const nofication_popup_style = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 300px;
+        background-color: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 20px;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        font-family: Arial, sans-serif;
+        z-index: 10000;
+    `;
+
+    const nofication_popup_close_btn_style = `
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background-color: transparent;
+        color: #ff5c5c;
+        border: none;
+        font-size: 20px;
+        font-weight: bold;
+        cursor: pointer;
+    `;
+
+    const followed_list_popup_style = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        padding: 20px;
+        background: white;
+        border: 1px solid black;
+        z-index: 10000;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    `;
+
+    const followed_list_popup_close_btn_style = `
+        position: absolute;
+        top: 5px;
+        right: 10px;
+        cursor: pointer;
+    `;
+
+    const follow_list_table_style = `
+        width: 100%;
+        border-collapse: collapse;
+    `;
 
     // ========================================================================================================
     // 更新GM Value的函数
@@ -117,14 +135,14 @@
 
     // 根据checkbox的状态更新value对应的数组
     // value/id: tid/pid, uid/tid
-    unsafeWindow.recordCheckbox = function (value, id, checked) {
+    function recordCheckbox(value, id, checked) {
         let checked_list = GM_getValue(value, []);
         id = id.split('_check_')[1];
         updateGMListElements(checked_list, id, checked);
         updateGMList(value, checked_list);
     }
 
-    unsafeWindow.changePageAllCheckboxs = function () {
+    function changePageAllCheckboxs() {
         const tid = location.href.parseURL().tid;
         const checkbox_page = qS('#page_checked_all');
         const checked_for_all = checkbox_page.checked;
@@ -141,7 +159,7 @@
     // 关注某个用户在某个Thread下的回复
     // 若tid==0，则关注用户的所有主题
     // 若tid==-1, 则关注用户的所有回复
-    unsafeWindow.recordFollow = function (uid, name, tid, followed) {
+    function recordFollow(uid, name, tid, followed) {
         let followed_threads = GM_getValue(uid + '_followed_threads', []);
         updateGMListElements(followed_threads, { "tid": tid, "last_tpid": 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
         updateGMList(uid + '_followed_threads', followed_threads);
@@ -299,7 +317,7 @@
         };
     }
 
-    unsafeWindow.saveThread = async function (type = 'main') {
+    async function saveThread(type = 'main') {
         const thread_id = qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a').href.parseURL().tid;
         let title_name = qS('#thread_subject').parentNode.textContent.replaceAll('\n', '').replaceAll('[', '【').replaceAll(']', '】');
         let file_info = `Link: ${location.href}\n****************\n`;
@@ -361,7 +379,7 @@
         }
     }
 
-    unsafeWindow.saveMergedThreads = async function () {
+    async function saveMergedThreads() {
         const uid = location.href.parseURL().uid;
         let checked_threads = GM_getValue(uid + '_checked_threads', []);
 
@@ -432,6 +450,14 @@
     // ========================================================================================================
     // 修改页面内容的函数
     // ========================================================================================================
+    function insertFollowedListLink() {
+        const friends_li = qS('#myitem_menu > li:nth-child(3)')
+        if (friends_li) {
+            const follow_li = document.createElement('li');
+            insertInteractiveLink('关注', () => createFollowedListPopup(), follow_li);
+            friends_li.parentNode.appendChild(follow_li);
+        }
+    }
     function insertElement(elem, pos, type = 'append') {
         switch (type) {
             case 'append':
@@ -450,7 +476,8 @@
         const a = document.createElement('a');
         a.href = 'javascript:void(0)';
         a.textContent = text;
-        a.setAttribute('onclick', func);
+        // a.setAttribute('onclick', func);
+        a.addEventListener('click', func);
         insertElement(a, pos, type);
     }
 
@@ -469,7 +496,7 @@
             if (tid != 0) {
                 follow_btn.textContent = '在本贴' + follow_btn.textContent;
             }
-            unsafeWindow.recordFollow(uid, name, tid, !followed);
+            recordFollow(uid, name, tid, !followed);
         });
         insertElement(follow_btn, pos, type);
     }
@@ -496,7 +523,7 @@
             checkbox.id = 'post_check_' + pid;
             checkbox.type = 'checkbox';
             checkbox.checked = checked_posts.includes(pid);
-            checkbox.addEventListener('change', () => { unsafeWindow.recordCheckbox(`${tid}_checked_posts`, checkbox.id, checkbox.checked) });// 每个Thread设置一个数组，存入被选中的Post的ID
+            checkbox.addEventListener('change', () => { recordCheckbox(`${tid}_checked_posts`, checkbox.id, checkbox.checked) });// 每个Thread设置一个数组，存入被选中的Post的ID
             label.appendChild(checkbox);
 
             all_checked = all_checked && checkbox.checked;
@@ -519,7 +546,7 @@
         checkbox.id = 'page_checked_all';
         checkbox.type = 'checkbox';
         checkbox.checked = all_checked;
-        checkbox.setAttribute('onchange', 'window.changePageAllCheckboxs()');
+        checkbox.addEventListener('change', () => { changePageAllCheckboxs() });
         label.appendChild(checkbox);
     }
 
@@ -544,7 +571,7 @@
                 continue;
             }
 
-            checkbox.addEventListener('change', () => { unsafeWindow.recordCheckbox(`${uid}_checked_threads`, checkbox.id, checkbox.checked) });// 每个用户设置一个数组，存入被选中的Thread的ID
+            checkbox.addEventListener('change', () => { recordCheckbox(`${uid}_checked_threads`, checkbox.id, checkbox.checked) });// 每个用户设置一个数组，存入被选中的Thread的ID
         }
     }
 
@@ -555,17 +582,17 @@
         updatePostInPage();
 
         if (isFirstPage()) {
-            insertInteractiveLink('保存主楼  ', 'window.saveThread()', qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
+            insertInteractiveLink('保存主楼  ', () => saveThread(), qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
 
             if (is_only_author) {
-                insertInteractiveLink('保存作者  ', 'window.saveThread("page")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+                insertInteractiveLink('保存作者  ', () => saveThread("page"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
             }
             else {
-                insertInteractiveLink('保存全帖  ', 'window.saveThread("page")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+                insertInteractiveLink('保存全帖  ', () => saveThread("page"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
             }
         }
 
-        insertInteractiveLink('保存选中  ', 'window.saveThread("checked")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+        insertInteractiveLink('保存选中  ', () => saveThread("checked"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 
     async function modifySpacePage() {
@@ -579,7 +606,7 @@
             }
 
             const pos = qS('#delform > table > tbody > tr.th > th');
-            insertInteractiveLink('  合并保存', 'window.saveMergedThreads()', pos);
+            insertInteractiveLink('  合并保存', () => saveMergedThreads(), pos);
         }
 
         const toptb = qS('#toptb > div.z');
@@ -597,12 +624,57 @@
     // ========================================================================================================
     // 浮动弹窗相关
     // ========================================================================================================
-    function createFloatingPopup() {
+    function createFollowedListPopup() {
+        const popup = document.createElement('div');
+        popup.id = 'followed-list-popup';
+        popup.style = followed_list_popup_style;
+        document.body.appendChild(popup);
+
+        const close_btn = document.createElement('button');
+        close_btn.className = 'close-btn';
+        close_btn.style = followed_list_popup_close_btn_style;
+        close_btn.onclick = () => { document.body.removeChild(popup) };
+        close_btn.textContent = '✖';
+        popup.appendChild(close_btn);
+
+        const table = document.createElement('table');
+        table.style = follow_list_table_style;
+        const followed_users = GM_getValue('followed_users', []);
+        if (followed_users.length > 0) {
+            for (let user of followed_users) {
+                const followed_threads = GM_getValue(user.uid + '_followed_threads', []);
+                for (let thread of followed_threads) {
+                    const row = table.insertRow();
+                    const user_cell = row.insertCell(0);
+                    const thread_cell = row.insertCell(1);
+                    const follow_cell = row.insertCell(2);
+
+                    user_cell.textContent = user.name;
+                    thread_cell.textContent = thread.tid == 0 ? '所有主题' : thread.tid;
+                    insertFollowBtn(user.uid, user.name, thread.tid, follow_cell);
+
+                    user_cell.style.padding = '8px';
+                    thread_cell.style.padding = '8px';
+                    follow_cell.style.padding = '8px';
+                    follow_cell.style.textAlign = 'center';
+                }
+            }
+        }
+        popup.appendChild(table);
+    }
+
+    function createNotificationPopup() {
         const popup = document.createElement('div');
         popup.id = 'nofication-popup';
-        popup.className = 'floating-popup';
-        popup.innerHTML = `<button class="close-btn" onclick="this.parentElement.style.display='none'"></button>`;
+        popup.style = nofication_popup_style;
         document.body.appendChild(popup);
+
+        const close_btn = document.createElement('button');
+        close_btn.className = 'close-btn';
+        close_btn.style = nofication_popup_close_btn_style;
+        close_btn.onclick = () => { popup.style.display = 'none' };
+        close_btn.textContent = '✖';
+        popup.appendChild(close_btn);
     }
 
     function insertLinkInPopup(text, URL_params, pos, type = 'append') {
@@ -614,7 +686,7 @@
         insertElement(link, pos, type);
     }
 
-    async function updateFloatingPopup() {
+    async function updateNotificationPopup() {
         const followed_users = await GM.getValue('followed_users', []);
         if (followed_users.length > 0) {
             let popup = qS('#nofication-popup');
@@ -641,7 +713,7 @@
                     }
 
                     if (!popup) {
-                        createFloatingPopup();
+                        createNotificationPopup();
                         popup = qS('#nofication-popup');
                     }
 
@@ -683,7 +755,7 @@
                             popup.appendChild(messageElement);
                             const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
                             insertLinkInPopup(user.name, user_URL_params, messageElement);
-                            let message = ` 还有`;
+                            let message = ` 还有 `;
                             if (!found_last) {
                                 message += '超过';
                             }
@@ -702,8 +774,9 @@
     // ========================================================================================================
     // 主体运行
     // ========================================================================================================
-    updateFloatingPopup();
+    updateNotificationPopup();
 
+    insertFollowedListLink();
     if (hasReadPermission()) {
         if (location_params.loc == 'forum' && location_params.mod == 'viewthread') {
             modifyPostPage();
