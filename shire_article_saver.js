@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.3
+// @version      0.5.3.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -411,7 +411,7 @@
         const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': tid, 'authorid': uid, 'page': large_page_num, 'mobile': 2 };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const posts_in_page = getPostsInPage(page_doc);
-        const thread_title = qS('head > title').textContent.slice(0, -8);
+        const thread_title = qS('head > title', page_doc).textContent.slice(0, -8);
         let new_posts = [];
         let found = false;
         for (let i = posts_in_page.length - 1; i >= 0; i--) {
