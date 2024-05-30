@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.4.2
+// @version      0.5.4.3
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -404,6 +404,15 @@
     // ========================================================================================================
     // 获取关注用户最新动态的函数
     // ========================================================================================================
+    async function getUserNewestPostOrThread(uid, tid, last_tpid = 0) {
+        if (tid == 0) {
+            return getUserNewestThread(uid, last_tpid);
+        }
+        else if (tid > 0) {
+            return getUserNewestPostInThread(uid, tid, last_tpid);
+        }
+    }
+
     async function getUserNewestThread(uid, last_tid = 0) {
         const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid, 'do': 'thread', 'view': 'me', 'from': 'space', 'mobile': 2 };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
@@ -703,78 +712,70 @@
             for (let user of followed_users) {
                 let followed_threads = (await GM.getValue(user.uid + '_followed_threads', []));
                 for (let thread of followed_threads) {
-                    let new_infos;
-                    if (thread.tid == 0) {
-                        new_infos = await getUserNewestThread(user.uid, thread.last_tpid);
-                    }
-                    else if (thread.tid > 0) {
-                        new_infos = await getUserNewestPostInThread(user.uid, thread.tid, thread.last_tpid);
-                    }
-                    const new_tpinfos = new_infos.new;
-                    const found_last = new_infos.found;
+                    getUserNewestPostOrThread(user.uid, thread.tid, thread.last_tpid).then(new_infos => {
+                        const new_tpinfos = new_infos.new;
+                        const found_last = new_infos.found;
 
-                    if (new_tpinfos.length > 0) {
-                        updateGMListElements(followed_threads, { 'tid': thread.tid, 'last_tpid': new_tpinfos[0].tpid }, true, (a, b) => a.tid == b.tid);
-                        updateGMList(user.uid + '_followed_threads', followed_threads);
-                    }
-
-                    if (thread.last_tpid == 0 || new_tpinfos.length == 0) {
-                        continue;
-                    }
-
-                    if (!popup) {
-                        createNotificationPopup();
-                        popup = qS('#nofication-popup');
-                    }
-
-                    if (thread.tid > 0) {
-                        const thread_title = new_tpinfos[0].title;
-                        const messageElement = document.createElement('p');
-                        popup.appendChild(messageElement);
-                        const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
-                        insertLink(user.name, user_URL_params, messageElement);
-                        const text_element = document.createTextNode(' 在 ');
-                        messageElement.appendChild(text_element);
-                        const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid, 'page': large_page_num };
-                        insertLink(thread_title, thread_URL_params, messageElement);
-                        let message = ` 中有`;
-                        if (!found_last) {
-                            message += '超过';
+                        if (new_tpinfos.length > 0) {
+                            updateGMListElements(followed_threads, { 'tid': thread.tid, 'last_tpid': new_tpinfos[0].tpid }, true, (a, b) => a.tid == b.tid);
+                            updateGMList(user.uid + '_followed_threads', followed_threads);
                         }
-                        message += `${new_tpinfos.length}条新回复`;
-                        const text_element2 = document.createTextNode(message);
-                        messageElement.appendChild(text_element2);
 
+                        if (thread.last_tpid == 0 || new_tpinfos.length == 0) {
+                            return;
+                        }
 
+                        if (!popup) {
+                            createNotificationPopup();
+                            popup = qS('#nofication-popup');
+                        }
 
-                    }
-                    else if (thread.tid == 0) {
-                        const notif_num = new_tpinfos.length > 3 ? 3 : new_tpinfos.length;
-                        for (let i = 0; i < notif_num; i++) {
+                        if (thread.tid > 0) {
+                            const thread_title = new_tpinfos[0].title;
                             const messageElement = document.createElement('p');
                             popup.appendChild(messageElement);
                             const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
                             insertLink(user.name, user_URL_params, messageElement);
-                            const text_element = document.createTextNode(' 的新帖 ');
+                            const text_element = document.createTextNode(' 在 ');
                             messageElement.appendChild(text_element);
-                            const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_tpinfos[i].tpid };
-                            insertLink(new_tpinfos[i].title, thread_URL_params, messageElement);
-                        }
-                        if (new_tpinfos.length > 3) {
-                            const messageElement = document.createElement('p');
-                            popup.appendChild(messageElement);
-                            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
-                            insertLink(user.name, user_URL_params, messageElement);
-                            let message = ` 还有 `;
+                            const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid, 'page': large_page_num };
+                            insertLink(thread_title, thread_URL_params, messageElement);
+                            let message = ` 中有`;
                             if (!found_last) {
                                 message += '超过';
                             }
-                            const text_element = document.createTextNode(message);
-                            messageElement.appendChild(text_element);
-                            const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
-                            insertLink(`${new_tpinfos.length - 3}条新帖`, thread_URL_params, messageElement);
+                            message += `${new_tpinfos.length}条新回复`;
+                            const text_element2 = document.createTextNode(message);
+                            messageElement.appendChild(text_element2);
                         }
-                    }
+                        else if (thread.tid == 0) {
+                            const notif_num = new_tpinfos.length > 3 ? 3 : new_tpinfos.length;
+                            for (let i = 0; i < notif_num; i++) {
+                                const messageElement = document.createElement('p');
+                                popup.appendChild(messageElement);
+                                const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+                                insertLink(user.name, user_URL_params, messageElement);
+                                const text_element = document.createTextNode(' 的新帖 ');
+                                messageElement.appendChild(text_element);
+                                const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_tpinfos[i].tpid };
+                                insertLink(new_tpinfos[i].title, thread_URL_params, messageElement);
+                            }
+                            if (new_tpinfos.length > 3) {
+                                const messageElement = document.createElement('p');
+                                popup.appendChild(messageElement);
+                                const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+                                insertLink(user.name, user_URL_params, messageElement);
+                                let message = ` 还有 `;
+                                if (!found_last) {
+                                    message += '超过';
+                                }
+                                const text_element = document.createTextNode(message);
+                                messageElement.appendChild(text_element);
+                                const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
+                                insertLink(`${new_tpinfos.length - 3}条新帖`, thread_URL_params, messageElement);
+                            }
+                        }
+                    })
                 }
             }
         }
@@ -805,4 +806,3 @@
 // TODO 浮动文字
 // TODO 合并贴标题
 // TODO 弹窗样式美化
-// TODO 并发请求
