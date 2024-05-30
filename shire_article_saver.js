@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.4
+// @version      0.5.4.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -454,7 +454,7 @@
         const friends_li = qS('#myitem_menu > li:nth-child(3)')
         if (friends_li) {
             const follow_li = document.createElement('li');
-            insertInteractiveLink('关注', () => createFollowedListPopup(), follow_li);
+            insertInteractiveLink('关注', () => { if (!qS('#followed-list-popup')) { createFollowedListPopup() } }, follow_li);
             friends_li.parentNode.appendChild(follow_li);
         }
     }
