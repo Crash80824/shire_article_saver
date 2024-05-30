@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.4.1
+// @version      0.5.4.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -25,7 +25,7 @@
     // 常量和简单的工具函数
     // ========================================================================================================
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
-    const large_page_num = 100;
+    const large_page_num = 1024;
 
     const qS = (selector, parent = document) => parent.querySelector(selector);
     const qSA = (selector, parent = document) => parent.querySelectorAll(selector);
@@ -476,8 +476,15 @@
         const a = document.createElement('a');
         a.href = 'javascript:void(0)';
         a.textContent = text;
-        // a.setAttribute('onclick', func);
         a.addEventListener('click', func);
+        insertElement(a, pos, type);
+    }
+
+    function insertLink(text, URL_params, pos, type = 'append') {
+        const a = document.createElement('a');
+        a.textContent = text;
+        a.href = createURLInDomain(URL_params);
+        a.target = '_blank';
         insertElement(a, pos, type);
     }
 
@@ -611,13 +618,10 @@
 
         const toptb = qS('#toptb > div.z');
         if (toptb) {
-            const a = document.createElement('a');
-            const uid = location.href.parseURL().uid;
             const name = getSpaceAuthor();
-            a.textContent = `${name}的主题`;
-            a.href = `https://${location.host}/main/home.php?mod=space&uid=${uid}&do=thread&from=space`;
-            toptb.appendChild(a);
-            insertFollowBtn(uid, name, 0, toptb);
+            const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': URL_info.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
+            insertLink(`${name}的主题`, URL_params, toptb);
+            insertFollowBtn(URL_info.uid, name, 0, toptb);
         }
     }
 
@@ -649,8 +653,16 @@
                     const thread_cell = row.insertCell(1);
                     const follow_cell = row.insertCell(2);
 
-                    user_cell.textContent = user.name;
-                    thread_cell.textContent = thread.tid == 0 ? '所有主题' : thread.tid;
+                    const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+                    insertLink(user.name, user_URL_params, user_cell);
+                    let thread_URL_params;
+                    if (thread.tid > 0) {
+                        thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid };
+                    }
+                    else if (thread.tid == 0) {
+                        thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
+                    }
+                    insertLink(thread.tid == 0 ? '所有主题' : thread.tid, thread_URL_params, thread_cell);
                     insertFollowBtn(user.uid, user.name, thread.tid, follow_cell);
 
                     user_cell.style.padding = '8px';
@@ -659,6 +671,13 @@
                     follow_cell.style.textAlign = 'center';
                 }
             }
+        }
+        else {
+            const row = table.insertRow();
+            const cell = row.insertCell();
+            cell.textContent = '暂无关注';
+            cell.style.textAlign = 'center';
+            cell.style.padding = '8px';
         }
         popup.appendChild(table);
     }
@@ -675,15 +694,6 @@
         close_btn.onclick = () => { popup.style.display = 'none' };
         close_btn.textContent = '✖';
         popup.appendChild(close_btn);
-    }
-
-    function insertLinkInPopup(text, URL_params, pos, type = 'append') {
-        const link = document.createElement('a');
-        link.textContent = text;
-        link.href = createURLInDomain(URL_params);
-        link.target = '_blank';
-        link.style.color = 'inherit';
-        insertElement(link, pos, type);
     }
 
     async function updateNotificationPopup() {
@@ -722,11 +732,11 @@
                         const messageElement = document.createElement('p');
                         popup.appendChild(messageElement);
                         const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
-                        insertLinkInPopup(user.name, user_URL_params, messageElement);
+                        insertLink(user.name, user_URL_params, messageElement);
                         const text_element = document.createTextNode(' 在 ');
                         messageElement.appendChild(text_element);
                         const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid, 'page': large_page_num };
-                        insertLinkInPopup(thread_title, thread_URL_params, messageElement);
+                        insertLink(thread_title, thread_URL_params, messageElement);
                         let message = ` 中有`;
                         if (!found_last) {
                             message += '超过';
@@ -744,17 +754,17 @@
                             const messageElement = document.createElement('p');
                             popup.appendChild(messageElement);
                             const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
-                            insertLinkInPopup(user.name, user_URL_params, messageElement);
+                            insertLink(user.name, user_URL_params, messageElement);
                             const text_element = document.createTextNode(' 的新帖 ');
                             messageElement.appendChild(text_element);
                             const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_tpinfos[i].tpid };
-                            insertLinkInPopup(new_tpinfos[i].title, thread_URL_params, messageElement);
+                            insertLink(new_tpinfos[i].title, thread_URL_params, messageElement);
                         }
                         if (new_tpinfos.length > 3) {
                             const messageElement = document.createElement('p');
                             popup.appendChild(messageElement);
                             const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
-                            insertLinkInPopup(user.name, user_URL_params, messageElement);
+                            insertLink(user.name, user_URL_params, messageElement);
                             let message = ` 还有 `;
                             if (!found_last) {
                                 message += '超过';
@@ -762,7 +772,7 @@
                             const text_element = document.createTextNode(message);
                             messageElement.appendChild(text_element);
                             const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
-                            insertLinkInPopup(`${new_tpinfos.length - 3}条新帖`, thread_URL_params, messageElement);
+                            insertLink(`${new_tpinfos.length - 3}条新帖`, thread_URL_params, messageElement);
                         }
                     }
                 }
@@ -789,3 +799,10 @@
 
 
 })();
+
+// TODO 关注上限
+// TODO 长标题缩写
+// TODO 浮动文字
+// TODO 合并贴标题
+// TODO 弹窗样式美化
+// TODO 并发请求
