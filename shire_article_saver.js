@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.2
+// @version      0.5.3
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -27,6 +27,7 @@
     // 常量和简单的工具函数
     // ========================================================================================================
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
+    const large_page_num = 100;
 
     const qS = (selector, parent = document) => parent.querySelector(selector);
     const qSA = (selector, parent = document) => parent.querySelectorAll(selector);
@@ -179,18 +180,24 @@
         return { 'name': thread_auth_name, 'id': thread_auth_id };
     }
 
-    async function getPageDocInDomain(params, UA = null) {
+    function createURLInDomain(params) {
         if (!'loc' in params) {
             return;
         }
-        URL = `https://${location.host}/main/${params.loc}.php?`;
+        let url = `https://${location.host}/main/${params.loc}.php?`;
         delete params.loc;
         for (const [key, value] of Object.entries(params)) {
-            URL += `${key}=${value}&`;
+            url += `${key}=${value}&`;
         }
+        return url;
+    }
+
+
+    async function getPageDocInDomain(params, UA = null) {
+        const url = createURLInDomain(params);
         if (UA === null) {
             const http_request = new XMLHttpRequest();
-            http_request.open('GET', URL, false);
+            http_request.open('GET', url, false);
             http_request.send()
             const page_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
             return page_doc;
@@ -199,7 +206,7 @@
             return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'GET',
-                    url: URL,
+                    url: url,
                     headers: { 'User-Agent': UA },
                     onload: response => {
                         const page_doc = new DOMParser().parseFromString(response.responseText, 'text/html');
@@ -384,9 +391,11 @@
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const threads_in_page = qSA('li.list', page_doc);
         let new_threads = [];
+        let found = false;
         for (let thread of threads_in_page) {
             const tid = qS('a:nth-child(2)', thread).href.parseURL().tid;
             if (tid <= last_tid) {
+                found = true;
                 break;
             }
             const title = qS('a:nth-child(2) > div > em', thread).textContent;
@@ -395,28 +404,29 @@
                 break;
             }
         }
-        return new_threads;
+        return { 'new': new_threads, 'found': found }
     }
 
     async function getUserNewestPostInThread(uid, tid, last_pid = 0) {
-        const large_page_num = 100;
         const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': tid, 'authorid': uid, 'page': large_page_num, 'mobile': 2 };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const posts_in_page = getPostsInPage(page_doc);
+        const thread_title = qS('head > title').textContent.slice(0, -8);
         let new_posts = [];
+        let found = false;
         for (let i = posts_in_page.length - 1; i >= 0; i--) {
             const post = posts_in_page[i];
             const post_id = getPostId(post);
             if (post_id <= last_pid) {
+                found = true;
                 break;
             }
-            const thread_title = qS('head > title').textContent.slice(0, -8);
             new_posts.push({ 'tpid': post_id, 'title': thread_title });
             if (last_pid == 0) {
                 break;
             }
         }
-        return new_posts;
+        return { 'new': new_posts, 'found': found }
     }
 
     // ========================================================================================================
@@ -584,12 +594,24 @@
         }
     }
 
+    // ========================================================================================================
+    // 浮动弹窗相关
+    // ========================================================================================================
     function createFloatingPopup() {
         const popup = document.createElement('div');
         popup.id = 'nofication-popup';
         popup.className = 'floating-popup';
         popup.innerHTML = `<button class="close-btn" onclick="this.parentElement.style.display='none'"></button>`;
         document.body.appendChild(popup);
+    }
+
+    function insertLinkInPopup(text, URL_params, pos, type = 'append') {
+        const link = document.createElement('a');
+        link.textContent = text;
+        link.href = createURLInDomain(URL_params);
+        link.target = '_blank';
+        link.style.color = 'inherit';
+        insertElement(link, pos, type);
     }
 
     async function updateFloatingPopup() {
@@ -599,37 +621,77 @@
             for (let user of followed_users) {
                 let followed_threads = (await GM.getValue(user.uid + '_followed_threads', []));
                 for (let thread of followed_threads) {
-                    let new_infos = [];
+                    let new_infos;
                     if (thread.tid == 0) {
                         new_infos = await getUserNewestThread(user.uid, thread.last_tpid);
                     }
                     else if (thread.tid > 0) {
                         new_infos = await getUserNewestPostInThread(user.uid, thread.tid, thread.last_tpid);
-                        console.log(new_infos);
                     }
+                    const new_tpinfos = new_infos.new;
+                    const found_last = new_infos.found;
 
-                    if (new_infos.length > 0) {
-                        updateGMListElements(followed_threads, { 'tid': thread.tid, 'last_tpid': new_infos[0].tpid }, true, (a, b) => a.tid == b.tid);
+                    if (new_tpinfos.length > 0) {
+                        updateGMListElements(followed_threads, { 'tid': thread.tid, 'last_tpid': new_tpinfos[0].tpid }, true, (a, b) => a.tid == b.tid);
                         updateGMList(user.uid + '_followed_threads', followed_threads);
                     }
-                    if (thread.last_tpid == 0 || new_infos.length == 0) {
+
+                    if (thread.last_tpid == 0 || new_tpinfos.length == 0) {
                         continue;
                     }
+
                     if (!popup) {
                         createFloatingPopup();
                         popup = qS('#nofication-popup');
                     }
-                    for (let info of new_infos) {
-                        let message = user.name;
-                        if (thread.tid == 0) {
-                            message += ` 的新帖 ${info.title}`;
-                        }
-                        else if (thread.tid > 0) {
-                            message += ` 在 ${info.title} 中的新回复`;
-                        }
+
+                    if (thread.tid > 0) {
+                        const thread_title = new_tpinfos[0].title;
                         const messageElement = document.createElement('p');
-                        messageElement.textContent = message;
                         popup.appendChild(messageElement);
+                        const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+                        insertLinkInPopup(user.name, user_URL_params, messageElement);
+                        const text_element = document.createTextNode(' 在 ');
+                        messageElement.appendChild(text_element);
+                        const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid, 'page': large_page_num };
+                        insertLinkInPopup(thread_title, thread_URL_params, messageElement);
+                        let message = ` 中有`;
+                        if (!found_last) {
+                            message += '超过';
+                        }
+                        message += `${new_tpinfos.length}条新回复`;
+                        const text_element2 = document.createTextNode(message);
+                        messageElement.appendChild(text_element2);
+
+
+
+                    }
+                    else if (thread.tid == 0) {
+                        const notif_num = new_tpinfos.length > 3 ? 3 : new_tpinfos.length;
+                        for (let i = 0; i < notif_num; i++) {
+                            const messageElement = document.createElement('p');
+                            popup.appendChild(messageElement);
+                            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+                            insertLinkInPopup(user.name, user_URL_params, messageElement);
+                            const text_element = document.createTextNode(' 的新帖 ');
+                            messageElement.appendChild(text_element);
+                            const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_tpinfos[i].tpid };
+                            insertLinkInPopup(new_tpinfos[i].title, thread_URL_params, messageElement);
+                        }
+                        if (new_tpinfos.length > 3) {
+                            const messageElement = document.createElement('p');
+                            popup.appendChild(messageElement);
+                            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+                            insertLinkInPopup(user.name, user_URL_params, messageElement);
+                            let message = ` 还有`;
+                            if (!found_last) {
+                                message += '超过';
+                            }
+                            const text_element = document.createTextNode(message);
+                            messageElement.appendChild(text_element);
+                            const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
+                            insertLinkInPopup(`${new_tpinfos.length - 3}条新帖`, thread_URL_params, messageElement);
+                        }
                     }
                 }
             }
@@ -640,13 +702,7 @@
     // ========================================================================================================
     // 主体运行
     // ========================================================================================================
-
     updateFloatingPopup();
-
-    const all_values = GM_listValues();
-    for (let value of all_values) {
-        console.log(value, GM_getValue(value));
-    }
 
     if (hasReadPermission()) {
         if (location_params.loc == 'forum' && location_params.mod == 'viewthread') {
