@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.0.3
+// @version      0.5.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -90,24 +90,26 @@
     // 更新GM Value的函数
     // ========================================================================================================
     function updateGMListElements(list, elem, status, equal = (a, b) => a == b) {
-        if (status && !list.some(e => equal(e, elem))) {
-
+        if (status && !list.some(e => equal(e, elem))) { // 存入元素
             list.push(elem);
         }
-        if (!status && list.some(e => equal(e, elem))) {
-            const new_list = list.filter(e => !equal(e, elem));
+        if (list.some(e => equal(e, elem))) {
+            const new_list = list.filter(e => !equal(e, elem)); // 删除元素
             list.length = 0;
             list.push(...new_list);
+            if (status) {
+                list.push(elem); // 更新元素
+            }
         }
         return list;
     }
 
-    function updateGMList(list_name, list) {
+    async function updateGMList(list_name, list) {
         if (list.length == 0) {
-            GM_deleteValue(list_name);
+            GM.deleteValue(list_name);
         }
         else {
-            GM_setValue(list_name, list);
+            GM.setValue(list_name, list);
         }
     }
 
@@ -141,8 +143,6 @@
         let followed_threads = GM_getValue(uid + '_followed_threads', []);
         updateGMListElements(followed_threads, { "tid": tid, "last_tpid": 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
         updateGMList(uid + '_followed_threads', followed_threads);
-        console.log(`Followed ${uid} ${tid}`)
-        console.log(followed_threads)
 
         let followed_users = GM_getValue('followed_users', []);
         updateGMListElements(followed_users, { 'uid': uid, 'name': name }, followed_threads.length > 0, (a, b) => a.uid == b.uid);
@@ -314,7 +314,7 @@
                     filename += `（${author.name}）`;
                 }
                 else {
-                    filename += '（全文）';
+                    filename += '（全帖）';
                 }
 
 
@@ -391,6 +391,9 @@
             }
             const title = qS('a:nth-child(2) > div > em', thread).textContent;
             new_threads.push({ 'tid': tid, 'title': title });
+            if (last_tid == 0) {
+                break;
+            }
         }
         return new_threads;
     }
@@ -452,7 +455,6 @@
             const user_level = qS('[id^=favatar] > p:nth-child(5)', post);
             const follow_btn = document.createElement('button');
             const follow_status = await GM.getValue(uid + '_followed_threads', []);
-            console.log(follow_status)
             const followed = follow_status.some(e => e.tid == 0);
             follow_btn.textContent = followed ? '取关' : '关注';
             follow_btn.addEventListener('click', async () => {
@@ -556,20 +558,33 @@
     async function updateFloatingPopup() {
         const followed_users = await GM.getValue('followed_users', []);
         if (followed_users.length > 0) {
-            const popup = qS('#nofication-popup');
+            let popup = qS('#nofication-popup');
             for (let user of followed_users) {
-                const followed_info = (await GM.getValue(user.uid + '_followed_threads', [])).find(e => e.tid == 0);
-                const new_threads = await getUserNewestThread(user.uid, followed_info.last_tpid);
-                for (let thread of new_threads) {
-                    const message = `${user.name} 发布了新主题 ${thread.title}`;
-                    const messageElement = document.createElement('p');
-                    messageElement.textContent = message;
-                    popup.appendChild(messageElement);
+                let followed_threads = (await GM.getValue(user.uid + '_followed_threads', []));
+                for (let thread of followed_threads) {
+                    if (thread.tid == 0) {
+                        const new_threads = await getUserNewestThread(user.uid, thread.last_tpid);
+                        if (new_threads.length > 0) {
+                            updateGMListElements(followed_threads, { 'tid': thread.tid, 'last_tpid': new_threads[0].tid }, true, (a, b) => a.tid == b.tid);
+                            updateGMList(user.uid + '_followed_threads', followed_threads);
+                        }
+                        if (thread.last_tpid == 0 || new_threads.length == 0) {
+                            continue;
+                        }
+                        if (!popup) {
+                            createFloatingPopup();
+                            popup = qS('#nofication-popup');
+                        }
+                        for (let thread of new_threads) {
+                            const message = `${user.name} 的新帖 ${thread.title}`;
+                            const messageElement = document.createElement('p');
+                            messageElement.textContent = message;
+                            popup.appendChild(messageElement);
+                        }
+                    }
                 }
             }
         }
-
-
     }
 
 
@@ -577,13 +592,12 @@
     // 主体运行
     // ========================================================================================================
 
-    // createFloatingPopup();
-    // updateFloatingPopup();
+    updateFloatingPopup();
 
-    const all_values = GM_listValues();
-    for (let value of all_values) {
-        console.log(value, GM_getValue(value));
-    }
+    // const all_values = GM_listValues();
+    // for (let value of all_values) {
+    //     console.log(value, GM_getValue(value));
+    // }
 
     if (hasReadPermission()) {
         if (location_params.loc == 'forum' && location_params.mod == 'viewthread') {
