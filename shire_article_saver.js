@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.1
+// @version      0.5.1.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -52,6 +52,7 @@
 
     const getPostId = post => post.id.slice(5);
     const getPostInPage = (page_doc = document) => qSA('[class^="plhin post_gender"]', qS('#postlist', page_doc));
+    const getSpaceAuthor = (page_doc = document) => qS('head > meta:nth-child(6)').content.slice(0, -3);
 
     // ========================================================================================================
     // 自定义样式
@@ -403,23 +404,46 @@
     // ========================================================================================================
     // 修改页面内容的函数
     // ========================================================================================================
-    function insertLink(text, func, pos, type = 'append') {
+    function insertElement(elem, pos, type = 'append') {
+        switch (type) {
+            case 'append':
+                pos.appendChild(elem);
+                break;
+            case 'insertBefore':
+                pos.parentNode.insertBefore(elem, pos);
+                break;
+            case 'insertAfter':
+                pos.parentNode.insertBefore(elem, pos.nextSibling);
+                break;
+        }
+    }
+
+    function insertInteractiveLink(text, func, pos, type = 'append') {
         const a = document.createElement('a');
         a.href = 'javascript:void(0)';
         a.textContent = text;
         a.setAttribute('onclick', func);
+        insertElement(a, pos, type);
+    }
 
-        switch (type) {
-            case 'append':
-                pos.appendChild(a);
-                break;
-            case 'insertBefore':
-                pos.parentNode.insertBefore(a, pos);
-                break;
-            case 'insertAfter':
-                pos.parentNode.insertBefore(a, pos.nextSibling);
-                break;
+    function insertFollowBtn(uid, name, tid, pos, type = 'append') {
+        const follow_btn = document.createElement('button');
+        const follow_status = GM_getValue(uid + '_followed_threads', []);
+        const followed = follow_status.some(e => e.tid == tid);
+        follow_btn.textContent = followed ? '取关' : '关注';
+        if (tid != 0) {
+            follow_btn.textContent += '在本贴';
         }
+        follow_btn.addEventListener('click', async () => {
+            const follow_status = GM_getValue(uid + '_followed_threads', []);
+            const followed = follow_status.some(e => e.tid == tid);
+            follow_btn.textContent = !followed ? '取关' : '关注';
+            if (tid != 0) {
+                follow_btn.textContent = '在本贴' + follow_btn.textContent;
+            }
+            unsafeWindow.recordFollow(uid, name, tid, !followed);
+        });
+        insertElement(follow_btn, pos, type);
     }
 
     async function updatePostInPage() {
@@ -452,18 +476,8 @@
             // 结束添加保存复选框
 
             // 添加关注按钮
-            const user_level = qS('[id^=favatar] > p:nth-child(5)', post);
-            const follow_btn = document.createElement('button');
-            const follow_status = await GM.getValue(uid + '_followed_threads', []);
-            const followed = follow_status.some(e => e.tid == 0);
-            follow_btn.textContent = followed ? '取关' : '关注';
-            follow_btn.addEventListener('click', async () => {
-                const follow_status = await GM.getValue(uid + '_followed_threads', []);
-                const followed = follow_status.some(e => e.tid == 0);
-                follow_btn.textContent = !followed ? '取关' : '关注';
-                unsafeWindow.recordFollow(uid, post_info.post_auth, 0, !followed);
-            });
-            user_level.appendChild(follow_btn);
+            const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
+            insertFollowBtn(uid, post_info.post_auth, 0, profile_icon);
             // 结束添加关注按钮
         }
 
@@ -512,17 +526,17 @@
         updatePostInPage();
 
         if (isFirstPage()) {
-            insertLink('保存主楼  ', 'window.saveThread()', qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
+            insertInteractiveLink('保存主楼  ', 'window.saveThread()', qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
 
             if (is_only_author) {
-                insertLink('保存作者  ', 'window.saveThread("page")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+                insertInteractiveLink('保存作者  ', 'window.saveThread("page")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
             }
             else {
-                insertLink('保存全帖  ', 'window.saveThread("page")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+                insertInteractiveLink('保存全帖  ', 'window.saveThread("page")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
             }
         }
 
-        insertLink('保存选中  ', 'window.saveThread("checked")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+        insertInteractiveLink('保存选中  ', 'window.saveThread("checked")', qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 
     async function modifySpacePage() {
@@ -536,14 +550,18 @@
             }
 
             const pos = qS('#delform > table > tbody > tr.th > th');
-            insertLink('  合并保存选中', 'window.saveMergedThreads()', pos);
+            insertInteractiveLink('  合并保存', 'window.saveMergedThreads()', pos);
         }
-        if (qS('#toptb > div.z')) {
+
+        const toptb = qS('#toptb > div.z');
+        if (toptb) {
             const a = document.createElement('a');
             const uid = location.href.parseURL().uid;
-            a.textContent = '主题';
+            const name = getSpaceAuthor();
+            a.textContent = `${name}的主题`;
             a.href = `https://${location.host}/main/home.php?mod=space&uid=${uid}&do=thread&from=space`;
-            qS('#toptb > div.z').appendChild(a);
+            toptb.appendChild(a);
+            insertFollowBtn(uid, name, 0, toptb);
         }
     }
 
@@ -594,10 +612,10 @@
 
     updateFloatingPopup();
 
-    // const all_values = GM_listValues();
-    // for (let value of all_values) {
-    //     console.log(value, GM_getValue(value));
-    // }
+    const all_values = GM_listValues();
+    for (let value of all_values) {
+        console.log(value, GM_getValue(value));
+    }
 
     if (hasReadPermission()) {
         if (location_params.loc == 'forum' && location_params.mod == 'viewthread') {
