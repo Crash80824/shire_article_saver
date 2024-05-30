@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.1.1
+// @version      0.5.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -50,8 +50,8 @@
     const isFirstPage = (doc = document) => { const page = doc.URL.parseURL().page; return !Boolean(page) || page == 1; }
     const hasThreadInPage = (doc = document) => { const thread_list = qS('#delform > table > tbody > tr:not(.th)', doc); return Boolean(thread_list) && thread_list.childNodes.length > 3; }
 
-    const getPostId = post => post.id.slice(5);
-    const getPostInPage = (page_doc = document) => qSA('[class^="plhin post_gender"]', qS('#postlist', page_doc));
+    const getPostId = post => post.id.slice(3);
+    const getPostsInPage = (page_doc = document) => qSA('[id^=pid]', page_doc);
     const getSpaceAuthor = (page_doc = document) => qS('head > meta:nth-child(6)').content.slice(0, -3);
 
     // ========================================================================================================
@@ -168,7 +168,7 @@
         let thread_auth_name = '';
         let thread_auth_id = '';
         if (isFirstPage()) {
-            const first_post_info = getPostInfo(qS('#postlist > div'));
+            const first_post_info = getPostInfo(qS('#postlist > div > table'));
             thread_auth_name = first_post_info.post_auth;
             thread_auth_id = first_post_info.post_auth_id;
         }
@@ -248,11 +248,10 @@
     async function getPageContent(page_doc, type = 'main') {
         const tid = page_doc.URL.parseURL().tid;
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
-        const post_in_page = getPostInPage(page_doc);
+        const posts_in_page = getPostsInPage(page_doc);
 
         let text = '';
-        for (let post of post_in_page) {
-            post = post.parentNode;
+        for (let post of posts_in_page) {
             if (type == 'checked') {
                 const post_id = getPostId(post);
                 if (!checked_posts.includes(post_id)) {
@@ -391,7 +390,7 @@
                 break;
             }
             const title = qS('a:nth-child(2) > div > em', thread).textContent;
-            new_threads.push({ 'tid': tid, 'title': title });
+            new_threads.push({ 'tpid': tid, 'title': title });
             if (last_tid == 0) {
                 break;
             }
@@ -399,7 +398,26 @@
         return new_threads;
     }
 
-    // function getUserNewestPostInThread(uid, tid, last_pid = 0) { }
+    async function getUserNewestPostInThread(uid, tid, last_pid = 0) {
+        const large_page_num = 100;
+        const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': tid, 'authorid': uid, 'page': large_page_num, 'mobile': 2 };
+        const page_doc = await getPageDocInDomain(URL_params, mobileUA);
+        const posts_in_page = getPostsInPage(page_doc);
+        let new_posts = [];
+        for (let i = posts_in_page.length - 1; i >= 0; i--) {
+            const post = posts_in_page[i];
+            const post_id = getPostId(post);
+            if (post_id <= last_pid) {
+                break;
+            }
+            const thread_title = qS('head > title').textContent.slice(0, -8);
+            new_posts.push({ 'tpid': post_id, 'title': thread_title });
+            if (last_pid == 0) {
+                break;
+            }
+        }
+        return new_posts;
+    }
 
     // ========================================================================================================
     // 修改页面内容的函数
@@ -432,7 +450,7 @@
         const followed = follow_status.some(e => e.tid == tid);
         follow_btn.textContent = followed ? '取关' : '关注';
         if (tid != 0) {
-            follow_btn.textContent += '在本贴';
+            follow_btn.textContent = '在本贴' + follow_btn.textContent;
         }
         follow_btn.addEventListener('click', async () => {
             const follow_status = GM_getValue(uid + '_followed_threads', []);
@@ -449,11 +467,10 @@
     async function updatePostInPage() {
         const tid = location.href.parseURL().tid;
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
-        const post_in_page = getPostInPage();
+        const posts_in_page = getPostsInPage();
         let all_checked = true;
 
-        for (let post of post_in_page) {
-            post = post.parentNode;
+        for (let post of posts_in_page) {
             const post_info = getPostInfo(post);
             const pid = post_info.post_id;
             const uid = post_info.post_auth_id;
@@ -478,6 +495,8 @@
             // 添加关注按钮
             const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
             insertFollowBtn(uid, post_info.post_auth, 0, profile_icon);
+            const user_level = qS('[id^=favatar] > p:nth-child(5)', post)
+            insertFollowBtn(uid, post_info.post_auth, tid, user_level);
             // 结束添加关注按钮
         }
 
@@ -580,25 +599,37 @@
             for (let user of followed_users) {
                 let followed_threads = (await GM.getValue(user.uid + '_followed_threads', []));
                 for (let thread of followed_threads) {
+                    let new_infos = [];
                     if (thread.tid == 0) {
-                        const new_threads = await getUserNewestThread(user.uid, thread.last_tpid);
-                        if (new_threads.length > 0) {
-                            updateGMListElements(followed_threads, { 'tid': thread.tid, 'last_tpid': new_threads[0].tid }, true, (a, b) => a.tid == b.tid);
-                            updateGMList(user.uid + '_followed_threads', followed_threads);
+                        new_infos = await getUserNewestThread(user.uid, thread.last_tpid);
+                    }
+                    else if (thread.tid > 0) {
+                        new_infos = await getUserNewestPostInThread(user.uid, thread.tid, thread.last_tpid);
+                        console.log(new_infos);
+                    }
+
+                    if (new_infos.length > 0) {
+                        updateGMListElements(followed_threads, { 'tid': thread.tid, 'last_tpid': new_infos[0].tpid }, true, (a, b) => a.tid == b.tid);
+                        updateGMList(user.uid + '_followed_threads', followed_threads);
+                    }
+                    if (thread.last_tpid == 0 || new_infos.length == 0) {
+                        continue;
+                    }
+                    if (!popup) {
+                        createFloatingPopup();
+                        popup = qS('#nofication-popup');
+                    }
+                    for (let info of new_infos) {
+                        let message = user.name;
+                        if (thread.tid == 0) {
+                            message += ` 的新帖 ${info.title}`;
                         }
-                        if (thread.last_tpid == 0 || new_threads.length == 0) {
-                            continue;
+                        else if (thread.tid > 0) {
+                            message += ` 在 ${info.title} 中的新回复`;
                         }
-                        if (!popup) {
-                            createFloatingPopup();
-                            popup = qS('#nofication-popup');
-                        }
-                        for (let thread of new_threads) {
-                            const message = `${user.name} 的新帖 ${thread.title}`;
-                            const messageElement = document.createElement('p');
-                            messageElement.textContent = message;
-                            popup.appendChild(messageElement);
-                        }
+                        const messageElement = document.createElement('p');
+                        messageElement.textContent = message;
+                        popup.appendChild(messageElement);
                     }
                 }
             }
