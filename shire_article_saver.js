@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.5.2
+// @version      0.5.5.4
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -439,7 +439,7 @@
                 const reply_in_thread = qSA('a', thread);
                 const tid = reply_in_thread[0].href.parseURL().tid;
                 const title = reply_in_thread[0].textContent.trim()
-                let new_reply_num = reply_in_thread.length;
+                let new_reply_num = reply_in_thread.length - 1;
                 for (let i = 1; i < reply_in_thread.length; i++) {
                     const pid = reply_in_thread[i].href.parseURL().pid;
                     if (new_last_pid == 0) {
@@ -488,7 +488,7 @@
         const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': tid, 'authorid': uid, 'page': large_page_num, 'mobile': 2 };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const posts_in_page = getPostsInPage(page_doc);
-        const thread_title = qS('#thread_subject', page_doc).textContent;
+        const thread_title = qS('head > title', page_doc).textContent.slice(0, -8);
         let new_posts = [];
         let found = false;
         let reply_num = 0;
@@ -544,9 +544,15 @@
         insertElement(a, pos, type);
     }
 
-    function insertLink(text, URL_params, pos, type = 'append') {
+    function insertLink(text, URL_params, pos, max_text_length = 0, type = 'append') {
         const a = document.createElement('a');
-        a.textContent = text;
+        if (max_text_length > 0 && text.length > max_text_length) {
+            a.text = text.slice(0, max_text_length) + '...';
+            a.title = text;
+        }
+        else {
+            a.textContent = text;
+        }
         a.href = createURLInDomain(URL_params);
         a.target = '_blank';
         insertElement(a, pos, type);
@@ -750,7 +756,7 @@
                     else if (thread.tid == -1) {
                         thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
                     }
-                    insertLink(thread.title, thread_URL_params, thread_cell);
+                    insertLink(thread.title, thread_URL_params, thread_cell, 10);
                     insertFollowBtn({ 'uid': user.uid, 'name': user.name, 'tid': thread.tid, 'title': thread.title }, follow_cell);
 
                     user_cell.style.padding = '8px';
@@ -820,7 +826,7 @@
                                 const text_element = document.createTextNode(' 在 ');
                                 messageElement.appendChild(text_element);
                                 const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_thread.tid, 'page': large_page_num };
-                                insertLink(thread_title, thread_URL_params, messageElement);
+                                insertLink(thread_title, thread_URL_params, messageElement, 10);
                                 let message = ` 中有`;
                                 if (!found_last && thread.tid != -1) {
                                     message += '超过';
@@ -850,7 +856,7 @@
                                 const text_element = document.createTextNode(' 的新帖 ');
                                 messageElement.appendChild(text_element);
                                 const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_threads[i].tid };
-                                insertLink(new_threads[i].title, thread_URL_params, messageElement);
+                                insertLink(new_threads[i].title, thread_URL_params, messageElement, 10);
                             }
                             if (new_threads.length > 3) {
                                 const messageElement = document.createElement('p');
@@ -879,7 +885,7 @@
     // ========================================================================================================
     updateNotificationPopup();
     insertFollowedListLink();
-\
+
     if (hasReadPermission()) {
         if (location_params.loc == 'forum' && location_params.mod == 'viewthread') {
             modifyPostPage();
@@ -893,7 +899,6 @@
 
 // TODO 关注上限
 // TODO 长标题缩写
-// TODO 浮动文字
 // TODO 合并贴标题
 // TODO 弹窗样式美化
 // TODO 点击弹窗外关闭
