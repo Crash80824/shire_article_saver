@@ -911,22 +911,6 @@
     // ========================================================================================================
     // 主体运行
     // ========================================================================================================
-    let followed_users = GM_getValue('followed_users', []);
-    updateGMListElements(followed_users, { 'uid': 380825, 'name': '物哀' }, true, (a, b) => a.uid == b.uid);
-    updateGMListElements(followed_users, { 'uid': 366894, 'name': '自渡' }, true, (a, b) => a.uid == b.uid);
-    updateGMList('followed_users', followed_users);
-
-    let followed_threads;
-    followed_threads = GM_getValue('380825_followed_threads', []);
-    updateGMListElements(followed_threads, { 'tid': 0, 'last_tpid': 256056 }, true, (a, b) => a.tid == b.tid);
-    updateGMList('380825_followed_threads', followed_threads);
-
-    followed_threads = GM_getValue('366894_followed_threads', []);
-    updateGMListElements(followed_threads, { 'tid': 249874, 'last_tpid': 3246041 }, true, (a, b) => a.tid == b.tid);
-    updateGMListElements(followed_threads, { 'tid': -1, 'last_tpid': 3246041 }, true, (a, b) => a.tid == b.tid);
-    updateGMList('366894_followed_threads', followed_threads);
-
-
     updateNotificationPopup();
     insertFollowedListLink();
 
