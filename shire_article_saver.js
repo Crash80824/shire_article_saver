@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.5
+// @version      0.5.5.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -480,7 +480,7 @@
                 }
             }
         }
-        last_tid = new_threads.length == 0 ? 1 : new_threads[0].tpid;
+        last_tid = new_threads.length == 0 ? 1 : new_threads[0].tid;
         return { 'new': new_threads, 'found': found, 'last_tpid': last_tid }
     }
 
