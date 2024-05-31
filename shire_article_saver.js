@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.5.5.7
+// @version      0.5.5.8
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -64,7 +64,7 @@
         bottom: 20px;
         right: 20px;
         width: 300px;
-        background-color: rgba(0, 0, 0, 0.8);
+        background-color: rgba(0, 0, 0, 0.9);
         color: white;
         padding: 20px;
         border-radius: 5px;
@@ -440,7 +440,7 @@
             for (let thread of threads_in_page) {
                 const reply_in_thread = qSA('a', thread);
                 const tid = reply_in_thread[0].href.parseURL().tid;
-                const title = reply_in_thread[0].textContent.trim()
+                const title = qS('em', reply_in_thread[0]).textContent.trim()
                 let new_reply_num = reply_in_thread.length - 1;
                 for (let i = 1; i < reply_in_thread.length; i++) {
                     const pid = reply_in_thread[i].href.parseURL().pid;
@@ -548,6 +548,7 @@
         a.textContent = text;
         a.addEventListener('click', func);
         insertElement(a, pos, type);
+        return a;
     }
 
     function insertLink(text, URL_params, pos, max_text_length = 0, type = 'append') {
@@ -562,6 +563,7 @@
         a.href = createURLInDomain(URL_params);
         a.target = '_blank';
         insertElement(a, pos, type);
+        return a;
     }
 
     function insertFollowBtn(info, pos, type = 'append') {
@@ -752,8 +754,21 @@
         table.style = follow_list_table_style;
         const followed_users = GM_getValue('followed_users', []);
         if (followed_users.length > 0) {
+            const title_row = table.insertRow();
+            const user_title_cell = title_row.insertCell(0);
+            const thread_title_cell = title_row.insertCell(1);
+            const follow_title_cell = title_row.insertCell(2);
+            user_title_cell.textContent = '用户';
+            thread_title_cell.textContent = '关注内容';
+            follow_title_cell.textContent = '操作';
+            user_title_cell.style.padding = '8px';
+            thread_title_cell.style.padding = '8px';
+            follow_title_cell.style.padding = '8px';
+            follow_title_cell.style.textAlign = 'center';
+
             for (let user of followed_users) {
                 const followed_threads = GM_getValue(user.uid + '_followed_threads', []);
+
                 for (let thread of followed_threads) {
                     const row = table.insertRow();
                     const user_cell = row.insertCell(0);
@@ -832,13 +847,19 @@
                             popup = qS('#nofication-popup');
                         }
 
+                        function createParaAndInsertUserNameLink(uid) {
+                            const messageElement = document.createElement('p');
+                            popup.appendChild(messageElement);
+                            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+                            const user_link = insertLink(user.name, user_URL_params, messageElement);
+                            user_link.style.color = 'inherit'
+                            return messageElement;
+                        }
+
                         if (thread.tid != 0) {
                             for (let new_thread of new_threads) {
                                 const thread_title = new_thread.title;
-                                const messageElement = document.createElement('p');
-                                popup.appendChild(messageElement);
-                                const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
-                                insertLink(user.name, user_URL_params, messageElement);
+                                const messageElement = createParaAndInsertUserNameLink(user.uid);
                                 const text_element = document.createTextNode(' 在 ');
                                 messageElement.appendChild(text_element);
                                 const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_thread.tid, 'page': large_page_num };
@@ -852,10 +873,7 @@
                                 messageElement.appendChild(text_element2);
                             }
                             if (!found_last && thread.tid == -1) {
-                                const messageElement = document.createElement('p');
-                                popup.appendChild(messageElement);
-                                const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
-                                insertLink(user.name, user_URL_params, messageElement);
+                                const messageElement = createParaAndInsertUserNameLink(user.uid);
                                 const text_element2 = document.createTextNode(' 还有');
                                 messageElement.appendChild(text_element2);
                                 const reply_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
@@ -865,20 +883,14 @@
                         else if (thread.tid == 0) {
                             const notif_num = new_threads.length > 3 ? 3 : new_threads.length;
                             for (let i = 0; i < notif_num; i++) {
-                                const messageElement = document.createElement('p');
-                                popup.appendChild(messageElement);
-                                const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
-                                insertLink(user.name, user_URL_params, messageElement);
+                                const messageElement = createParaAndInsertUserNameLink(user.uid);
                                 const text_element = document.createTextNode(' 的新帖 ');
                                 messageElement.appendChild(text_element);
                                 const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_threads[i].tid };
-                                insertLink(new_threads[i].title, thread_URL_params, messageElement, 10);
+                                insertLink(new_threads[i].title, thread_URL_params, messageElement, 20);
                             }
                             if (new_threads.length > 3) {
-                                const messageElement = document.createElement('p');
-                                popup.appendChild(messageElement);
-                                const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
-                                insertLink(user.name, user_URL_params, messageElement);
+                                const messageElement = createParaAndInsertUserNameLink(user.uid);
                                 let message = ` 还有 `;
                                 if (!found_last) {
                                     message += '超过';
@@ -899,6 +911,22 @@
     // ========================================================================================================
     // 主体运行
     // ========================================================================================================
+    let followed_users = GM_getValue('followed_users', []);
+    updateGMListElements(followed_users, { 'uid': 380825, 'name': '物哀' }, true, (a, b) => a.uid == b.uid);
+    updateGMListElements(followed_users, { 'uid': 366894, 'name': '自渡' }, true, (a, b) => a.uid == b.uid);
+    updateGMList('followed_users', followed_users);
+
+    let followed_threads;
+    followed_threads = GM_getValue('380825_followed_threads', []);
+    updateGMListElements(followed_threads, { 'tid': 0, 'last_tpid': 256056 }, true, (a, b) => a.tid == b.tid);
+    updateGMList('380825_followed_threads', followed_threads);
+
+    followed_threads = GM_getValue('366894_followed_threads', []);
+    updateGMListElements(followed_threads, { 'tid': 249874, 'last_tpid': 3246041 }, true, (a, b) => a.tid == b.tid);
+    updateGMListElements(followed_threads, { 'tid': -1, 'last_tpid': 3246041 }, true, (a, b) => a.tid == b.tid);
+    updateGMList('366894_followed_threads', followed_threads);
+
+
     updateNotificationPopup();
     insertFollowedListLink();
 
@@ -915,13 +943,11 @@
 
 
 
+
+
 // TODO 合并贴标题
 // TODO 下载并发改进
 
 // TODO 弹窗样式美化
-// TODO 点击弹窗外关闭
-
-// TODO 关注上限
-
 // TODO 历史消息
 // TODO 清除数据
