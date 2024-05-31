@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.5.5.8
+// @version      0.5.6
 // @description  Download shire thread content.
 // @author       Crash
-// @match        https://www.shireyishunjian.com/*
-// @match        https://www.shishirere.com/*
+// @match        https://www.shireyishunjian.com/main/*
+// @match        https://www.shishirere.com/main/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
 // @grant        GM.getValue
 // @grant        GM_getValue
@@ -39,6 +39,13 @@
         this.replace(/(\w+)\.php/, (_, loc) => { obj.loc = loc });
         return obj;
     };
+    const commonPrefix = ((str1, str2) => {
+        return str1 === '' ? str2 : (str2 === '' ? str1 : (() => {
+            let i = 0;
+            while (i < str1.length && i < str2.length && str1[i] === str2[i]) i++;
+            return str1.slice(0, i);
+        })());
+    });
 
 
     const location_params = location.href.parseURL();
@@ -222,10 +229,9 @@
     async function getPageDocInDomain(params, UA = null) {
         const url = createURLInDomain(params);
         if (UA === null) {
-            const http_request = new XMLHttpRequest();
-            http_request.open('GET', url, false);
-            http_request.send()
-            const page_doc = new DOMParser().parseFromString(http_request.responseText, 'text/html');
+            const response = await fetch(url);
+            const page_doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+            page_doc.original_url = url;
             return page_doc;
         }
         else {
@@ -279,7 +285,11 @@
     }
 
     async function getPageContent(page_doc, type = 'main') {
-        const tid = page_doc.URL.parseURL().tid;
+        const tid = page_doc.original_url.parseURL().tid;
+        let page_id = page_doc.original_url.parseURL().page;
+        if (!page_id) {
+            page_id = 1;
+        }
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
         const posts_in_page = getPostsInPage(page_doc);
 
@@ -306,7 +316,7 @@
                 break;
             }
         }
-        return { 'text': text, 'image': [] };
+        return { 'tid': tid, 'page_id': page_id, 'text': text, 'image': [] };
     }
 
     // ========================================================================================================
@@ -330,81 +340,79 @@
         let title_name = qS('#thread_subject').parentNode.textContent.replaceAll('\n', '').replaceAll('[', '【').replaceAll(']', '】');
         let file_info = `Link: ${location.href}\n****************\n`;
 
-        switch (type) {
-            case 'main': {
-                let filename = title_name;
-                let content = file_info;
-                content += (await getPageContent(document, 'main')).text;
-                saveFile(filename, content);
+        if (type == 'main') {
+            let content = file_info;
+            content += (await getPageContent(document, 'main')).text;
+            saveFile(title_name, content);
+        }
+        else {
+            let filename = title_name;
+            let content = file_info;
+            const page_author = getThreadAuthorInfo();
+            const specific_authorid = location.href.parseURL().authorid;
+            const is_only_author = specific_authorid == page_author.id;
+
+            let filename_suffix = '';
+            if (is_only_author) {
+                filename_suffix = `${page_author.name}`;
+                if (type == 'checked') {
+                    filename_suffix += '节选';
+                }
             }
-                break;
-            case 'page': {
-                let filename = title_name;
-                let content = file_info;
-                const author = getThreadAuthorInfo();
-                const is_only_author = location.href.parseURL().authorid == author.id;
+            else {
+                if (type == 'page') {
+                    filename_suffix = '全帖';
+                }
+                else if (type == 'checked') {
+                    filename_suffix = '节选';
+                }
+            }
+            filename += '（' + filename_suffix + '）';
+
+            const page_num = (qS('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
+            const promises = Array.from({ length: page_num }, (_, i) => i + 1).map(async page_id => {
+                const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread_id, 'page': page_id };
                 if (is_only_author) {
-                    filename += `（${author.name}）`;
+                    URL_params.authorid = specific_authorid;
                 }
-                else {
-                    filename += '（全帖）';
-                }
-
-
-                const page_num = (qS('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
-                for (let page_id = 1; page_id <= page_num; page_id++) {
-                    const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread_id, 'page': page_id };
-                    if (is_only_author) {
-                        URL_params.authorid = author.id;
-                    }
-
-                    const page_doc = await getPageDocInDomain(URL_params);
-                    const page_content = (await getPageContent(page_doc, 'page')).text;
-                    content += page_content;
-
-                }
-                saveFile(filename, content);
-            }
-                break;
-            case 'checked': {
-                let filename = title_name + '（节选）';
-                let content = file_info;
-                const specific_authorid = location.href.parseURL().authorid;
-                const page_num = (qS('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
-                for (let page_id = 1; page_id <= page_num; page_id++) {
-                    const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread_id, 'page': page_id };
-                    if (specific_authorid) {
-                        URL_params.authorid = specific_authorid;
-                    }
-                    const page_doc = await getPageDocInDomain(URL_params);
-                    const page_content = (await getPageContent(page_doc, 'checked')).text;
-                    content += page_content;
-                }
-                saveFile(filename, content);
+                const page_doc = await getPageDocInDomain(URL_params);
+                return getPageContent(page_doc, type);
+            });
+            let content_list = await Promise.all(promises);
+            content_list.sort((a, b) => a.page_id - b.page_id);
+            content += content_list.map(e => e.text).join('');
+            saveFile(filename, content);
+            if (type == 'checked') {
                 GM.deleteValue(thread_id + '_checked_posts');
             }
-                break;
         }
+
     }
 
     async function saveMergedThreads() {
         const uid = location.href.parseURL().uid;
         let checked_threads = GM_getValue(uid + '_checked_threads', []);
 
-        let filename = '合并贴';
-        let content = '';
-        for (let tid of checked_threads.sort()) {
-            let thread_content = '';
+        let filename = '';
+        const promises = checked_threads.map(async tid => {
             const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': tid };
             const thread_doc = await getPageDocInDomain(URL_params);
+            const thread_title = qS('head > title', thread_doc).textContent.slice(0, -8);
+            filename = commonPrefix(filename, thread_title);
+            let thread_content = '';
             if (hasReadPermission(thread_doc)) {
-                thread_content += (await getPageContent(thread_doc, 'main')).text;
+                thread_content = (getPageContent(thread_doc, 'main'));
             }
             else {
-                thread_content += '没有权限查看此贴\n';
+                thread_content = { 'tid': tid, 'text': '没有权限查看此贴\n' };
             }
-            content += thread_content;
-        }
+            return new Promise(resolve => resolve(thread_content));
+        });
+        let content_list = await Promise.all(promises);
+        content_list = content_list.sort((a, b) => a.tid - b.tid);
+        const content = content_list.map(e => e.text).join('\n');
+        filename = filename.replace(/[ \t\r\n(（【［“‘]/g, '')
+        filename += '（合集）';
         saveFile(filename, content);
         GM.deleteValue(uid + '_checked_threads');
     }
@@ -860,21 +868,19 @@
                             for (let new_thread of new_threads) {
                                 const thread_title = new_thread.title;
                                 const messageElement = createParaAndInsertUserNameLink(user.uid);
-                                const text_element = document.createTextNode(' 在 ');
-                                messageElement.appendChild(text_element);
-                                const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_thread.tid, 'page': large_page_num };
-                                insertLink(thread_title, thread_URL_params, messageElement, 10);
-                                let message = ` 中有`;
+                                let message = ` 有`;
                                 if (!found_last && thread.tid != -1) {
                                     message += '超过';
                                 }
-                                message += `${new_thread.reply_num}条新回复`;
-                                const text_element2 = document.createTextNode(message);
-                                messageElement.appendChild(text_element2);
+                                message += `${new_thread.reply_num}条新回复在 `;
+                                const text_element = document.createTextNode(message);
+                                messageElement.appendChild(text_element);
+                                const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_thread.tid, 'page': large_page_num };
+                                insertLink(thread_title, thread_URL_params, messageElement, 10);
                             }
                             if (!found_last && thread.tid == -1) {
                                 const messageElement = createParaAndInsertUserNameLink(user.uid);
-                                const text_element2 = document.createTextNode(' 还有');
+                                const text_element2 = document.createTextNode(' 有 ');
                                 messageElement.appendChild(text_element2);
                                 const reply_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
                                 insertLink('更多新回复', reply_URL_params, messageElement);
@@ -884,14 +890,14 @@
                             const notif_num = new_threads.length > 3 ? 3 : new_threads.length;
                             for (let i = 0; i < notif_num; i++) {
                                 const messageElement = createParaAndInsertUserNameLink(user.uid);
-                                const text_element = document.createTextNode(' 的新帖 ');
+                                const text_element = document.createTextNode(' 有新帖 ');
                                 messageElement.appendChild(text_element);
                                 const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_threads[i].tid };
                                 insertLink(new_threads[i].title, thread_URL_params, messageElement, 20);
                             }
                             if (new_threads.length > 3) {
                                 const messageElement = createParaAndInsertUserNameLink(user.uid);
-                                let message = ` 还有 `;
+                                let message = ` 有另外 `;
                                 if (!found_last) {
                                     message += '超过';
                                 }
@@ -924,13 +930,6 @@
         }
     }
 })();
-
-
-
-
-
-// TODO 合并贴标题
-// TODO 下载并发改进
 
 // TODO 弹窗样式美化
 // TODO 历史消息
