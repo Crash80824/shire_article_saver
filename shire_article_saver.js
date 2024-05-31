@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.5.5.6
+// @version      0.5.5.7
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -517,14 +517,14 @@
     // 修改页面内容的函数
     // ========================================================================================================
     function insertFollowedListLink() {
-        let insert_li = qS('#myitem_menu > li:nth-child(3)')
-        if (!insert_li) {
-            insert_li = qS('#myspace_menu > li:nth-child(5)')
+        let insert_ul = qS('#myitem_menu')
+        if (!insert_ul) {
+            insert_ul = qS('#myspace_menu')
         }
-        if (insert_li) {
+        if (insert_ul) {
             const follow_li = document.createElement('li');
             insertInteractiveLink('关注', () => { if (!qS('#followed-list-popup')) { createFollowedListPopup() } }, follow_li);
-            insert_li.parentNode.appendChild(follow_li);
+            insert_ul.appendChild(follow_li);
         }
 
     }
@@ -728,18 +728,25 @@
     // ========================================================================================================
     // 浮动弹窗相关
     // ========================================================================================================
+    window.addEventListener('click', (event) => {
+        const follow_list_popup = qS('#followed-list-popup');
+        if (follow_list_popup && !follow_list_popup.contains(event.target)) {
+            document.body.removeChild(follow_list_popup);
+        }
+    });
+
     function createFollowedListPopup() {
         const popup = document.createElement('div');
         popup.id = 'followed-list-popup';
         popup.style = followed_list_popup_style;
         document.body.appendChild(popup);
 
-        const close_btn = document.createElement('button');
-        close_btn.className = 'close-btn';
-        close_btn.style = followed_list_popup_close_btn_style;
-        close_btn.onclick = () => { document.body.removeChild(popup) };
-        close_btn.textContent = '✖';
-        popup.appendChild(close_btn);
+        // const close_btn = document.createElement('button');
+        // close_btn.className = 'close-btn';
+        // close_btn.style = followed_list_popup_close_btn_style;
+        // close_btn.onclick = () => { document.body.removeChild(popup) };
+        // close_btn.textContent = '✖';
+        // popup.appendChild(close_btn);
 
         const table = document.createElement('table');
         table.style = follow_list_table_style;
