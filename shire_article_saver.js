@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.5.5.5
+// @version      0.5.5.6
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -16,6 +16,8 @@
 // @grant        GM.listValues
 // @grant        GM_listValues
 // @grant        GM_xmlhttpRequest
+// @downloadURL  https://update.greasyfork.org/scripts/461311/shire%20article%20saver.user.js
+// @updateURL    https://update.greasyfork.org/scripts/461311/shire%20article%20saver.user.js
 // ==/UserScript==
 
 (function () {
@@ -515,12 +517,16 @@
     // 修改页面内容的函数
     // ========================================================================================================
     function insertFollowedListLink() {
-        const friends_li = qS('#myitem_menu > li:nth-child(3)')
-        if (friends_li) {
+        let insert_li = qS('#myitem_menu > li:nth-child(3)')
+        if (!insert_li) {
+            insert_li = qS('#myspace_menu > li:nth-child(5)')
+        }
+        if (insert_li) {
             const follow_li = document.createElement('li');
             insertInteractiveLink('关注', () => { if (!qS('#followed-list-popup')) { createFollowedListPopup() } }, follow_li);
-            friends_li.parentNode.appendChild(follow_li);
+            insert_li.parentNode.appendChild(follow_li);
         }
+
     }
     function insertElement(elem, pos, type = 'append') {
         switch (type) {
