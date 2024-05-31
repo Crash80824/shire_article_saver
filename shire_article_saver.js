@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.6.0.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -16,8 +16,8 @@
 // @grant        GM.listValues
 // @grant        GM_listValues
 // @grant        GM_xmlhttpRequest
-// @downloadURL  https://update.greasyfork.org/scripts/461311/shire%20article%20saver.user.js
-// @updateURL    https://update.greasyfork.org/scripts/461311/shire%20article%20saver.user.js
+// @downloadURL https://update.greasyfork.org/scripts/461311/shire%20helper.user.js
+// @updateURL https://update.greasyfork.org/scripts/461311/shire%20helper.meta.js
 // ==/UserScript==
 
 (function () {
