@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         shire article saver
+// @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.5.5.4
+// @version      0.5.5.5
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -594,6 +594,9 @@
             const followed = follow_status.some(e => e.tid == info.tid);
             follow_btn.textContent = !followed ? followed_text : unfollowed_text;
             recordFollow(info, !followed);
+            if (info.tid == -1 && !followed) {
+                recordFollow({ 'uid': info.uid, 'name': info.name, 'tid': 0, 'title': '所有主题' }, true);
+            }
         });
         insertElement(follow_btn, pos, type);
     }
@@ -897,11 +900,15 @@
     }
 })();
 
-// TODO 关注上限
-// TODO 长标题缩写
+
+
 // TODO 合并贴标题
+// TODO 下载并发改进
+
 // TODO 弹窗样式美化
 // TODO 点击弹窗外关闭
+
+// TODO 关注上限
+
 // TODO 历史消息
-// TODO 下载并发改进
-// TODO 关注逻辑
+// TODO 清除数据
