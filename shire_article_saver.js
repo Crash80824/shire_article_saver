@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.0.1
+// @version      0.6.0.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -100,6 +100,8 @@
         padding: 20px;
         background: white;
         border: 1px solid black;
+        max-height: 80%;
+        overflow-y: auto;
         z-index: 10000;
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     `;
