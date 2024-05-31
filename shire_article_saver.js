@@ -745,6 +745,13 @@
         }
     });
 
+    window.addEventListener('keydown', (event) => {
+        const follow_list_popup = qS('#followed-list-popup');
+        if (follow_list_popup && event.key == 'Escape') {
+            document.body.removeChild(follow_list_popup);
+        }
+    });
+
     function createFollowedListPopup() {
         const popup = document.createElement('div');
         popup.id = 'followed-list-popup';
