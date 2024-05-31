@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire article saver
 // @namespace    http://tampermonkey.net/
-// @version      0.5.5.1
+// @version      0.5.5.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/*
@@ -160,13 +160,13 @@
     // 关注某个用户在某个Thread下的回复
     // 若tid==0，则关注用户的所有主题
     // 若tid==-1, 则关注用户的所有回复
-    function recordFollow(uid, name, tid, followed) {
-        let followed_threads = GM_getValue(uid + '_followed_threads', []);
-        updateGMListElements(followed_threads, { "tid": tid, "last_tpid": 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
-        updateGMList(uid + '_followed_threads', followed_threads);
+    function recordFollow(info, followed) {
+        let followed_threads = GM_getValue(info.uid + '_followed_threads', []);
+        updateGMListElements(followed_threads, { "tid": info.tid, 'title': info.title, "last_tpid": 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
+        updateGMList(info.uid + '_followed_threads', followed_threads);
 
         let followed_users = GM_getValue('followed_users', []);
-        updateGMListElements(followed_users, { 'uid': uid, 'name': name }, followed_threads.length > 0, (a, b) => a.uid == b.uid);
+        updateGMListElements(followed_users, { 'uid': info.uid, 'name': info.name }, followed_threads.length > 0, (a, b) => a.uid == b.uid);
         updateGMList('followed_users', followed_users);
 
         let followed_num = GM_getValue('followed_num', 0);
@@ -488,7 +488,7 @@
         const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': tid, 'authorid': uid, 'page': large_page_num, 'mobile': 2 };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const posts_in_page = getPostsInPage(page_doc);
-        const thread_title = qS('head > title', page_doc).textContent.slice(0, -8);
+        const thread_title = qS('#thread_subject', page_doc).textContent;
         let new_posts = [];
         let found = false;
         let reply_num = 0;
@@ -552,18 +552,20 @@
         insertElement(a, pos, type);
     }
 
-    function insertFollowBtn(uid, name, tid, pos, type = 'append') {
+    function insertFollowBtn(info, pos, type = 'append') {
         let unfollowed_text;
         let followed_text;
-        switch (tid) {
+        switch (info.tid) {
             case -1: {
                 unfollowed_text = '特别关注';
                 followed_text = '取消特关';
+                info.title = '所有回复';
             }
                 break;
             case 0: {
                 unfollowed_text = '关注';
                 followed_text = '取关';
+                info.title = '所有主题';
             }
                 break;
             default: {
@@ -573,8 +575,8 @@
         }
 
         const follow_btn = document.createElement('button');
-        const follow_status = GM_getValue(uid + '_followed_threads', []);
-        const followed = follow_status.some(e => e.tid == tid);
+        const follow_status = GM_getValue(info.uid + '_followed_threads', []);
+        const followed = follow_status.some(e => e.tid == info.tid);
         follow_btn.textContent = followed ? followed_text : unfollowed_text;
         follow_btn.addEventListener('click', async () => {
             const followed_num = GM_getValue('followed_num', 0);
@@ -582,10 +584,10 @@
                 alert('关注数已达上限，请及时清理关注列表.');
                 return;
             }
-            const follow_status = GM_getValue(uid + '_followed_threads', []);
-            const followed = follow_status.some(e => e.tid == tid);
+            const follow_status = GM_getValue(info.uid + '_followed_threads', []);
+            const followed = follow_status.some(e => e.tid == info.tid);
             follow_btn.textContent = !followed ? followed_text : unfollowed_text;
-            recordFollow(uid, name, tid, !followed);
+            recordFollow(info, !followed);
         });
         insertElement(follow_btn, pos, type);
     }
@@ -594,6 +596,7 @@
         const tid = location.href.parseURL().tid;
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
         const posts_in_page = getPostsInPage();
+        const thread_title = qS('#thread_subject').textContent;
         let all_checked = true;
 
         for (let post of posts_in_page) {
@@ -620,9 +623,9 @@
 
             // 添加关注按钮
             const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
-            insertFollowBtn(uid, post_info.post_auth, 0, profile_icon);
+            insertFollowBtn({ 'uid': uid, 'name': post_info.post_auth, 'tid': 0 }, profile_icon);
             const user_level = qS('[id^=favatar] > p:nth-child(5)', post)
-            insertFollowBtn(uid, post_info.post_auth, tid, user_level);
+            insertFollowBtn({ 'uid': uid, 'name': post_info.post_auth, 'tid': tid, 'title': thread_title }, user_level);
             // 结束添加关注按钮
         }
 
@@ -703,7 +706,7 @@
             const name = getSpaceAuthor();
             const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': URL_info.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
             insertLink(`${name}的主题`, URL_params, toptb);
-            insertFollowBtn(URL_info.uid, name, URL_info.type == 'reply' ? -1 : 0, toptb);
+            insertFollowBtn({ 'uid': URL_info.uid, 'name': name, 'tid': URL_info.type == 'reply' ? -1 : 0 }, toptb);
         }
     }
 
@@ -738,23 +741,17 @@
                     const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
                     insertLink(user.name, user_URL_params, user_cell);
                     let thread_URL_params;
-                    let thread_title;
                     if (thread.tid > 0) {
                         thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid };
-                        thread_title = thread.tid;
-
                     }
                     else if (thread.tid == 0) {
                         thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
-                        thread_title = '所有主题';
                     }
                     else if (thread.tid == -1) {
                         thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
-                        thread_title = '所有回复';
                     }
-                    insertLink(thread_title, thread_URL_params, thread_cell);
-
-                    insertFollowBtn(user.uid, user.name, thread.tid, follow_cell);
+                    insertLink(thread.title, thread_URL_params, thread_cell);
+                    insertFollowBtn({ 'uid': user.uid, 'name': user.name, 'tid': thread.tid, 'title': thread.title }, follow_cell);
 
                     user_cell.style.padding = '8px';
                     thread_cell.style.padding = '8px';
@@ -800,7 +797,7 @@
                         const last_tpid = new_infos.last_tpid;
 
                         if (new_threads.length > 0) {
-                            updateGMListElements(followed_threads, { 'tid': thread.tid, 'last_tpid': last_tpid }, true, (a, b) => a.tid == b.tid);
+                            updateGMListElements(followed_threads, { 'tid': thread.tid, 'last_tpid': last_tpid, 'title': thread.title }, true, (a, b) => a.tid == b.tid);
                             updateGMList(user.uid + '_followed_threads', followed_threads);
                         }
 
@@ -882,7 +879,7 @@
     // ========================================================================================================
     updateNotificationPopup();
     insertFollowedListLink();
-
+\
     if (hasReadPermission()) {
         if (location_params.loc == 'forum' && location_params.mod == 'viewthread') {
             modifyPostPage();
