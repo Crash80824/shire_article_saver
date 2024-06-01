@@ -449,7 +449,7 @@
         if (threads_in_page.length > 0) {
             for (let thread of threads_in_page) {
                 const reply_in_thread = qSA('a', thread);
-                const tid = reply_in_thread[0].href.parseURL().tid;
+                const tid = reply_in_thread[0].href.parseURL().ptid;
                 const title = qS('em', reply_in_thread[0]).textContent.trim()
                 let new_reply_num = reply_in_thread.length - 1;
                 for (let i = 1; i < reply_in_thread.length; i++) {
