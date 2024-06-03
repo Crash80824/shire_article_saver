@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.5
+// @version      0.6.1.6
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -79,7 +79,17 @@
 
     const getPostId = post => post.id.slice(3);
     const getPostsInPage = (page_doc = document) => qSA('[id^=pid]', page_doc);
-    const getSpaceAuthor = (page_doc = document) => qS('head > meta:nth-child(6)').content.slice(0, -3);
+    const getSpaceAuthor = () => {
+        const space_do = location.href.parseURL().do;
+        console.log(space_do);
+        if (typeof space_do === 'undefined') {
+            return qS('meta[name="keywords"]').content.slice(0, -3);
+        }
+        else {
+            const author_name = qS('#pcd > div > div > h2 > a');
+            return author_name ? author_name.textContent : '';
+        }
+    };
 
     // ========================================================================================================
     // 自定义表情
