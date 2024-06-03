@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.3
+// @version      0.6.1.4
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -962,17 +962,25 @@
         }
     }
 
-    async function modifySmiliesSwitch() {
+    async function modifySmiliesSwitch(original_smilies) {
         await checkVariableDefined('smilies_switch');
         let smilies_switch_str = unsafeWindow['smilies_switch'].toString();
         const insert_content = `if(!'${original_smilies}'.split(',').includes(type.toString())){smilieimg = smilieimg.replace('static/image/smiley', 'data/attachment');console.log(smilieimg);}`;
-        smilies_switch_str = smilies_switch_str.replace(/img\[k\]=new Image\(\);/, insert_content + "img[k]=new Image();");
+        smilies_switch_str = smilies_switch_str.replace("img[k]=new Image();", insert_content + "img[k]=new Image();");
         smilies_switch = new Function('return ' + smilies_switch_str)();
+    }
+
+    async function modifyBBCode2Html(original_smilies) {
+        await checkVariableDefined('bbcode2html');
+        let bbcode2html_str = unsafeWindow['bbcode2html'].toString();
+        bbcode2html_str = bbcode2html_str.replace("STATICURL+'image/smiley/'", `('${original_smilies}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'):'data/attachment/')`);
+        bbcode2html = new Function('return ' + bbcode2html_str)();
     }
 
     async function insertExtraSmilies(id, seditorkey, original_smilies, new_smilies) {
         await modifySmiliesArray(new_smilies);
-        await modifySmiliesSwitch();
+        await modifySmiliesSwitch(original_smilies);
+        await modifyBBCode2Html(original_smilies);
         smilies_show(id, 8, seditorkey);
     }
 
