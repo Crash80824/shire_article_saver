@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.1
+// @version      0.6.1.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -969,15 +969,50 @@
             if (original_smilies.includes(type)) {
                 continue;
             }
-            const original_onclick = li.getAttribute('onclick');
-            li.setAttribute('onclick', original_onclick + `const images = $('${id}_table').querySelectorAll('img');console.log(images);images.forEach(img => {if (img.src.includes('static/image/smiley')) {img.src = img.src.replace('static/image/smiley', 'data/attachment');}});`)
+            let original_onclick = li.getAttribute('onclick');
+            li.setAttribute('onclick', original_onclick + `const images = $('${id}_table').querySelectorAll('img');images.forEach(img => {if (img.src.includes('static/image/smiley')) {img.src = img.src.replace('static/image/smiley', 'data/attachment');}});`);
         }
     }
 
     async function insertExtraSmilies(id, seditorkey, original_smilies, new_smilies) {
         await modifySmiliesArray(new_smilies);
+        // modifyNewSmiliesOnclick(id, original_smilies);
+        unsafeWindow['smilies_switch'] = function (id, smcols, type, page, seditorkey) {
+            page = page ? page : 1;
+            if (!smilies_array[type] || !smilies_array[type][page])
+                return;
+            setcookie('smile', type + 'D' + page, 31536000);
+            smiliesdata = '<table id="' + id + '_table" cellpadding="0" cellspacing="0"><tr>';
+            j = k = 0;
+            img = [];
+            for (var i = 0; i < smilies_array[type][page].length; i++) {
+                if (j >= smcols) {
+                    smiliesdata += '<tr>';
+                    j = 0;
+                }
+                s = smilies_array[type][page][i];
+                smilieimg = STATICURL + 'image/smiley/' + smilies_type['_' + type][1] + '/' + s[2];
+                if (!original_smilies.includes(type.toString())) {
+                    smilieimg = smilieimg.replace('static/image/smiley', 'data/attachment');
+                }
+                img[k] = new Image();
+                img[k].src = smilieimg;
+                smiliesdata += s && s[0] ? '<td onmouseover="smilies_preview(\'' + seditorkey + '\', \'' + id + '\', this, ' + s[5] + ')" onclick="' + (typeof wysiwyg != 'undefined' ? 'insertSmiley(' + s[0] + ')' : 'seditor_insertunit(\'' + seditorkey + '\', \'' + s[1].replace(/'/, '\\\'') + '\')') + '" id="' + seditorkey + 'smilie_' + s[0] + '_td"><img id="smilie_' + s[0] + '" width="' + s[3] + '" height="' + s[4] + '" src="' + smilieimg + '" alt="' + s[1] + '" />' : '<td>';
+                j++;
+                k++;
+            }
+            smiliesdata += '</table>';
+            smiliespage = '';
+            if (smilies_array[type].length > 2) {
+                prevpage = ((prevpage = parseInt(page) - 1) < 1) ? smilies_array[type].length - 1 : prevpage;
+                nextpage = ((nextpage = parseInt(page) + 1) == smilies_array[type].length) ? 1 : nextpage;
+                smiliespage = '<div class="z"><a href="javascript:;" onclick="smilies_switch(\'' + id + '\', \'' + smcols + '\', ' + type + ', ' + prevpage + ', \'' + seditorkey + '\');doane(event);">上页</a>' + '<a href="javascript:;" onclick="smilies_switch(\'' + id + '\', \'' + smcols + '\', ' + type + ', ' + nextpage + ', \'' + seditorkey + '\');doane(event);">下页</a></div>' + page + '/' + (smilies_array[type].length - 1);
+            }
+            $(id + '_data').innerHTML = smiliesdata;
+            $(id + '_page').innerHTML = smiliespage;
+            $(id + '_tb').style.width = smcols * (16 + parseInt(s[3])) + 'px';
+        }
         smilies_show(id, 8, seditorkey);
-        modifyNewSmiliesOnclick(id, original_smilies);
     }
 
     // ========================================================================================================
