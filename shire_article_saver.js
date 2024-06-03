@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.4
+// @version      0.6.1.5
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -965,7 +965,7 @@
     async function modifySmiliesSwitch(original_smilies) {
         await checkVariableDefined('smilies_switch');
         let smilies_switch_str = unsafeWindow['smilies_switch'].toString();
-        const insert_content = `if(!'${original_smilies}'.split(',').includes(type.toString())){smilieimg = smilieimg.replace('static/image/smiley', 'data/attachment');console.log(smilieimg);}`;
+        const insert_content = `if(!'${original_smilies}'.split(',').includes(type.toString())){smilieimg = smilieimg.replace('static/image/smiley', 'data/attachment');}`;
         smilies_switch_str = smilies_switch_str.replace("img[k]=new Image();", insert_content + "img[k]=new Image();");
         smilies_switch = new Function('return ' + smilies_switch_str)();
     }
@@ -980,7 +980,6 @@
     async function insertExtraSmilies(id, seditorkey, original_smilies, new_smilies) {
         await modifySmiliesArray(new_smilies);
         await modifySmiliesSwitch(original_smilies);
-        await modifyBBCode2Html(original_smilies);
         smilies_show(id, 8, seditorkey);
     }
 
@@ -998,6 +997,7 @@
             }
             if (location_params.mod == 'post') {
                 insertExtraSmilies('smiliesdiv', 'e_', original_smilies, new_smilies);
+                modifyBBCode2Html(original_smilies);
             }
             if (location_params.mod == 'forumdisplay') {
                 insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
