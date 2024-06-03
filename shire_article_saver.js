@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.0
+// @version      0.6.1.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
 // @match        https://www.shishirere.com/main/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
+// @grant        unsafeWindow
 // @grant        GM.getValue
 // @grant        GM_getValue
 // @grant        GM.setValue
@@ -18,7 +19,6 @@
 // @grant        GM_xmlhttpRequest
 // @downloadURL https://update.greasyfork.org/scripts/461311/shire%20helper.user.js
 // @updateURL https://update.greasyfork.org/scripts/461311/shire%20helper.meta.js
-// @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
 // ==/UserScript==
 
 (function () {
@@ -40,6 +40,14 @@
         this.replace(/(\w+)\.php/, (_, loc) => { obj.loc = loc });
         return obj;
     };
+
+    const location_params = location.href.parseURL();
+    const is_not_mobile = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
+
+    if (!is_not_mobile) {
+        return;
+    }
+
     const commonPrefix = ((str1, str2) => {
         return str1 === '' ? str2 : (str2 === '' ? str1 : (() => {
             let i = 0;
@@ -49,12 +57,21 @@
     });
 
 
-    const location_params = location.href.parseURL();
-    const is_not_mobile = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
+    const checkVariableDefined = (variable_name, timeout = 15000, time_interval = 100) => new Promise((resolve, reject) => {
+        const startTime = Date.now();
 
-    if (!is_not_mobile) {
-        return;
-    }
+        function check() {
+            if (typeof unsafeWindow[variable_name] !== 'undefined') {
+                resolve(unsafeWindow[variable_name]);
+            } else if (Date.now() - startTime >= timeout) {
+                reject(new Error('Timeout exceeded'));
+            } else {
+                setTimeout(check, time_interval);
+            }
+        }
+
+        check();
+    })
 
     const hasReadPermission = (doc = document) => !Boolean(qS('#messagetext', doc));
     const isFirstPage = (doc = document) => { const page = doc.URL.parseURL().page; return !Boolean(page) || page == 1; }
@@ -936,51 +953,57 @@
     // ========================================================================================================
     // 插入表情相关
     // ========================================================================================================
-    function modifySmiliesArray(new_smilies) {
-        if (typeof smilies_array === 'undefined') {
-            console.log('smilies_array is not defined, retry in 100ms');
-            setTimeout(() => { modifySmiliesArray(new_smilies) }, 100);
-        }
-        else {
-            console.log('smilies_array is defined, start modifying');
-            for (let smilies of new_smilies) {
-                smilies_type['_' + smilies.type] = [smilies.name, smilies.folder];
-                smilies_array[smilies.type] = new Array();
-                smilies_array[smilies.type][1] = smilies.info;
-            }
-            smilies_show('fastpostsmiliesdiv', 8, 'fastpost');
-            modifyNewSmiliesOnclick(original_smilies);
+    async function modifySmiliesArray(new_smilies) {
+        await checkVariableDefined('smilies_array');
+        for (let smilies of new_smilies) {
+            smilies_type['_' + smilies.type] = [smilies.name, smilies.folder];
+            smilies_array[smilies.type] = new Array();
+            smilies_array[smilies.type][1] = smilies.info;
         }
     }
 
-    function modifyNewSmiliesOnclick(original_smilies) {
-        const smilies_tabs = qSA('#fastpostsmiliesdiv_tb > ul > li');
+    function modifyNewSmiliesOnclick(id, original_smilies) {
+        const smilies_tabs = qSA(`#${id}_tb > ul > li`);
         for (let li of smilies_tabs) {
-            const type = li.id.split('_')[1];
-            if (type in original_smilies) {
+            const type = li.id.split('_').at(-1);
+            if (original_smilies.includes(type)) {
                 continue;
             }
             const original_onclick = li.getAttribute('onclick');
-            li.setAttribute('onclick', original_onclick + "const images = $('fastpostsmiliesdiv_table').querySelectorAll('img');console.log(images);images.forEach(img => {if (img.src.includes('static/image/smiley')) {img.src = img.src.replace('static/image/smiley', 'data/attachment');}});")
+            li.setAttribute('onclick', original_onclick + `const images = $('${id}_table').querySelectorAll('img');console.log(images);images.forEach(img => {if (img.src.includes('static/image/smiley')) {img.src = img.src.replace('static/image/smiley', 'data/attachment');}});`)
         }
+    }
+
+    async function insertExtraSmilies(id, seditorkey, original_smilies, new_smilies) {
+        await modifySmiliesArray(new_smilies);
+        smilies_show(id, 8, seditorkey);
+        modifyNewSmiliesOnclick(id, original_smilies);
     }
 
     // ========================================================================================================
     // 主体运行
     // ========================================================================================================
     updateNotificationPopup();
-    insertFollowedListLink();
-
-    modifySmiliesArray(new_smilies);
-
+    insertFollowedListLink(); // TODO 不应该放在这
 
     if (hasReadPermission()) {
-        if (location_params.loc == 'forum' && location_params.mod == 'viewthread') {
-            modifyPostPage();
+        if (location_params.loc == 'forum') {
+            if (location_params.mod == 'viewthread') {
+                modifyPostPage();
+                insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
+            }
+            if (location_params.mod == 'post') {
+                insertExtraSmilies('smiliesdiv', 'e_', original_smilies, new_smilies);
+            }
+            if (location_params.mod == 'forumdisplay') {
+                insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
+            }
         }
 
-        if (location_params.loc == 'home' && location_params.mod == 'space') {
-            modifySpacePage();
+        if (location_params.loc == 'home') {
+            if (location_params.mod == 'space') {
+                modifySpacePage();
+            }
         }
     }
 
@@ -989,3 +1012,6 @@
 // TODO 弹窗样式美化
 // TODO 历史消息
 // TODO 清除数据
+// TODO 上传表情
+// TODO 设置面板
+// NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
