@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.0.2
+// @version      0.6.1.0
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -18,6 +18,7 @@
 // @grant        GM_xmlhttpRequest
 // @downloadURL https://update.greasyfork.org/scripts/461311/shire%20helper.user.js
 // @updateURL https://update.greasyfork.org/scripts/461311/shire%20helper.meta.js
+// @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
 // ==/UserScript==
 
 (function () {
@@ -62,6 +63,14 @@
     const getPostId = post => post.id.slice(3);
     const getPostsInPage = (page_doc = document) => qSA('[id^=pid]', page_doc);
     const getSpaceAuthor = (page_doc = document) => qS('head > meta:nth-child(6)').content.slice(0, -3);
+
+    // ========================================================================================================
+    // 自定义表情
+    // ========================================================================================================
+    const original_smilies = ['4'];
+    const new_smilies = [];
+    const test_smilies = [['{:1haha1:}', '202207/04/192158kg0urgxtw2805yrs.png']];
+    new_smilies.push({ 'name': 'test', 'type': '10', 'folder': 'album', 'info': test_smilies.map((v, i) => ['10' + i, v[0], v[1], 20, 20, 50]) });
 
     // ========================================================================================================
     // 自定义样式
@@ -556,7 +565,9 @@
         const a = document.createElement('a');
         a.href = 'javascript:void(0)';
         a.textContent = text;
-        a.addEventListener('click', func);
+        if (func instanceof Function) {
+            a.addEventListener('click', func);
+        }
         insertElement(a, pos, type);
         return a;
     }
@@ -922,12 +933,46 @@
         }
     }
 
+    // ========================================================================================================
+    // 插入表情相关
+    // ========================================================================================================
+    function modifySmiliesArray(new_smilies) {
+        if (typeof smilies_array === 'undefined') {
+            console.log('smilies_array is not defined, retry in 100ms');
+            setTimeout(() => { modifySmiliesArray(new_smilies) }, 100);
+        }
+        else {
+            console.log('smilies_array is defined, start modifying');
+            for (let smilies of new_smilies) {
+                smilies_type['_' + smilies.type] = [smilies.name, smilies.folder];
+                smilies_array[smilies.type] = new Array();
+                smilies_array[smilies.type][1] = smilies.info;
+            }
+            smilies_show('fastpostsmiliesdiv', 8, 'fastpost');
+            modifyNewSmiliesOnclick(original_smilies);
+        }
+    }
+
+    function modifyNewSmiliesOnclick(original_smilies) {
+        const smilies_tabs = qSA('#fastpostsmiliesdiv_tb > ul > li');
+        for (let li of smilies_tabs) {
+            const type = li.id.split('_')[1];
+            if (type in original_smilies) {
+                continue;
+            }
+            const original_onclick = li.getAttribute('onclick');
+            li.setAttribute('onclick', original_onclick + "const images = $('fastpostsmiliesdiv_table').querySelectorAll('img');console.log(images);images.forEach(img => {if (img.src.includes('static/image/smiley')) {img.src = img.src.replace('static/image/smiley', 'data/attachment');}});")
+        }
+    }
 
     // ========================================================================================================
     // 主体运行
     // ========================================================================================================
     updateNotificationPopup();
     insertFollowedListLink();
+
+    modifySmiliesArray(new_smilies);
+
 
     if (hasReadPermission()) {
         if (location_params.loc == 'forum' && location_params.mod == 'viewthread') {
@@ -938,6 +983,7 @@
             modifySpacePage();
         }
     }
+
 })();
 
 // TODO 弹窗样式美化
