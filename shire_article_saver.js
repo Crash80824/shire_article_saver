@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.6
+// @version      0.6.1.7
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -96,8 +96,11 @@
     // ========================================================================================================
     const original_smilies = ['4'];
     const new_smilies = [];
+    // const test_smilies = [['{:1haha1:}', 'animated-gif-0.webp']];
+    // new_smilies.push({ 'name': 'test', 'type': '10', 'path': 'https://p.upyun.com/demo/webp/webp', 'info': test_smilies.map((v, i) => ['10' + i, v[0], v[1], 20, 20, 50]) });
+
     const test_smilies = [['{:1haha1:}', '202207/04/192158kg0urgxtw2805yrs.png']];
-    new_smilies.push({ 'name': 'test', 'type': '10', 'folder': 'album', 'info': test_smilies.map((v, i) => ['10' + i, v[0], v[1], 20, 20, 50]) });
+    new_smilies.push({ 'name': 'test', 'type': '10', 'path': 'data/attachment/album', 'info': test_smilies.map((v, i) => ['10' + i, v[0], v[1], 20, 20, 50]) });
 
     // ========================================================================================================
     // 自定义样式
@@ -966,7 +969,7 @@
     async function modifySmiliesArray(new_smilies) {
         await checkVariableDefined('smilies_array');
         for (let smilies of new_smilies) {
-            smilies_type['_' + smilies.type] = [smilies.name, smilies.folder];
+            smilies_type['_' + smilies.type] = [smilies.name, smilies.path];
             smilies_array[smilies.type] = new Array();
             smilies_array[smilies.type][1] = smilies.info;
         }
@@ -975,15 +978,15 @@
     async function modifySmiliesSwitch(original_smilies) {
         await checkVariableDefined('smilies_switch');
         let smilies_switch_str = unsafeWindow['smilies_switch'].toString();
-        const insert_content = `if(!'${original_smilies}'.split(',').includes(type.toString())){smilieimg = smilieimg.replace('static/image/smiley', 'data/attachment');}`;
-        smilies_switch_str = smilies_switch_str.replace("img[k]=new Image();", insert_content + "img[k]=new Image();");
+        smilies_switch_str = smilies_switch_str.replace("STATICURL+'image/smiley/'", `('${original_smilies}'.split(',').includes(type.toString())?(STATICURL+'image/smiley/'):'')`);
+        console.log(smilies_switch_str);
         smilies_switch = new Function('return ' + smilies_switch_str)();
     }
 
     async function modifyBBCode2Html(original_smilies) {
         await checkVariableDefined('bbcode2html');
         let bbcode2html_str = unsafeWindow['bbcode2html'].toString();
-        bbcode2html_str = bbcode2html_str.replace("STATICURL+'image/smiley/'", `('${original_smilies}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'):'data/attachment/')`);
+        bbcode2html_str = bbcode2html_str.replace("STATICURL+'image/smiley/'", `('${original_smilies}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'):'')`);
         bbcode2html = new Function('return ' + bbcode2html_str)();
     }
 
