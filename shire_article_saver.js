@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.8
+// @version      0.6.1.9
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -974,34 +974,38 @@
         }
     }
 
-    async function modifySmiliesSwitch(original_smilies) {
+    async function modifySmiliesSwitch(original_smilies, mode = 'img') {
         await checkVariableDefined('smilies_switch');
         let smilies_switch_str = unsafeWindow['smilies_switch'].toString();
         smilies_switch_str = smilies_switch_str.replace("STATICURL+'image/smiley/'+smilies_type['_'+type][1]+'/'", `('${original_smilies}'.split(',').includes(type.toString())?(STATICURL+'image/smiley/'+smilies_type['_'+type][1]+'/'):smilies_type['_'+type][1])`);
+        if (mode == 'img') {
+            smilies_switch_str = smilies_switch_str.replace("'insertSmiley('+s[0]+')'", `"insertText('[img]"+smilieimg+"[/img]',strlen('[img]"+smilieimg+"[/img]'),0)"`);
+        }
         smilies_switch = new Function('return ' + smilies_switch_str)();
+    }
+
+
+    async function insertExtraSmilies(id, seditorkey, original_smilies, new_smilies) {
+        await modifySmiliesArray(new_smilies);
+        await modifySmiliesSwitch(original_smilies, 'img');
+        smilies_show(id, 8, seditorkey);
     }
 
     async function modifyBBCode2Html(original_smilies) {
         await checkVariableDefined('bbcode2html');
         let bbcode2html_str = unsafeWindow['bbcode2html'].toString();
         bbcode2html_str = bbcode2html_str.replace("STATICURL+'image/smiley/'+smilies_type['_'+typeid][1]+'/'", `('${original_smilies}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'+smilies_type['_'+typeid][1]+'/'):smilies_type['_'+typeid][1])`);
-        bbcode2html_str = bbcode2html_str.replace("}if(!fetchCheckbox('bbcodeoff')&&allowbbcode){", "}console.log(str);if(!fetchCheckbox('bbcodeoff')&&allowbbcode){")
+        bbcode2html_str = bbcode2html_str.replace("}if(!fetchCheckbox('bbcodeoff')&&allowbbcode){", "}if(!fetchCheckbox('bbcodeoff')&&allowbbcode){")
         bbcode2html = new Function('return ' + bbcode2html_str)();
     }
 
-    async function insertExtraSmilies(id, seditorkey, original_smilies, new_smilies) {
-        await modifySmiliesArray(new_smilies);
-        await modifySmiliesSwitch(original_smilies);
-        smilies_show(id, 8, seditorkey);
-    }
-
-    async function modifyPostOnSubmit(original_smilies) {
+    async function modifyPostOnSubmit(submit_id, original_smilies) {
         // 不知道为什么，不这么做的话自定义表情在提交时会被转义成bbcode
-        const post = qS('#postform');
-        console.log(post);
-        const original_onsubmit_str = post.getAttribute('onsubmit').toString();
-        console.log(original_onsubmit_str);
-        post.setAttribute('onsubmit', original_onsubmit_str.replace('return validate(this)', `if(typeof smilies_type == 'object'){for (var typeid in smilies_array){for (var page in smilies_array[typeid]){for(var i in smilies_array[typeid][page]){re=new RegExp(preg_quote(smilies_array[typeid][page][i][1]),"g");this.message.value=this.message.value.replace(re,'[img]'+('${original_smilies}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'+ smilies_type['_' + typeid][1] + '/'):smilies_type['_' + typeid][1])+smilies_array[typeid][page][i][2]+"[/img]");}}}}return validate(this);`));
+        const post = qS('#' + submit_id);
+        submit_id = submit_id.replace('form', '');
+        // const original_onsubmit_str = post.getAttribute('onsubmit').toString();
+        // console.log(original_onsubmit_str);
+        post.setAttribute('onsubmit', `if(typeof smilies_type == 'object'){for (var typeid in smilies_array){for (var page in smilies_array[typeid]){for(var i in smilies_array[typeid][page]){re=new RegExp(preg_quote(smilies_array[typeid][page][i][1]),"g");this.message.value=this.message.value.replace(re,'[img]'+('${original_smilies}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'+ smilies_type['_' + typeid][1] + '/'):smilies_type['_' + typeid][1])+smilies_array[typeid][page][i][2]+"[/img]");}}}}`);
     }
 
     // ========================================================================================================
@@ -1015,14 +1019,16 @@
             if (location_params.mod == 'viewthread') {
                 modifyPostPage();
                 insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
+                // modifyPostOnSubmit('fastpostform', original_smilies);
             }
             if (location_params.mod == 'post') {
                 insertExtraSmilies('smiliesdiv', 'e_', original_smilies, new_smilies);
-                modifyBBCode2Html(original_smilies);
-                modifyPostOnSubmit();
+                // modifyBBCode2Html(original_smilies);
+                // modifyPostOnSubmit('postform', original_smilies);
             }
             if (location_params.mod == 'forumdisplay') {
                 insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
+                // modifyPostOnSubmit('fastpostform', original_smilies);
             }
         }
 
@@ -1040,4 +1046,7 @@
 // TODO 清除数据
 // TODO 上传表情
 // TODO 设置面板
+// TODO 黑名单
+// TODO 一键删除
+// TODO 表情代码
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
