@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.9
+// @version      0.6.1.10
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -564,17 +564,19 @@
     // ========================================================================================================
     // 修改页面内容的函数
     // ========================================================================================================
-    function insertFollowedListLink() {
-        let insert_ul = qS('#myitem_menu')
-        if (!insert_ul) {
-            insert_ul = qS('#myspace_menu')
+    function insertHelperSettingLink() {
+        let target_menu = qS('#myitem')
+        if (target_menu) {
+            insertInteractiveLink('助手', () => { if (!qS('#followed-list-popup')) { createFollowedListPopup() } }, target_menu, 'insertBefore');
+            const span = document.createElement('span');
+            span.textContent = ' | ';
+            span.className = 'pipe';
+            insertElement(span, target_menu, 'insertBefore');
         }
-        if (insert_ul) {
-            const follow_li = document.createElement('li');
-            insertInteractiveLink('关注', () => { if (!qS('#followed-list-popup')) { createFollowedListPopup() } }, follow_li);
-            insert_ul.appendChild(follow_li);
+        else {
+            target_menu = qS('#myspace')
+            insertInteractiveLink('助手', () => { if (!qS('#followed-list-popup')) { createFollowedListPopup() } }, target_menu, 'insertBefore');
         }
-
     }
     function insertElement(elem, pos, type = 'append') {
         switch (type) {
@@ -882,6 +884,7 @@
         const followed_users = await GM.getValue('followed_users', []);
         if (followed_users.length > 0) {
             let popup = qS('#nofication-popup');
+            const notification_messages = [];
             for (let user of followed_users) {
                 let followed_threads = (await GM.getValue(user.uid + '_followed_threads', []));
                 for (let thread of followed_threads) {
@@ -904,19 +907,20 @@
                             popup = qS('#nofication-popup');
                         }
 
-                        function createParaAndInsertUserNameLink(uid) {
+                        function createParaAndInsertUserNameLink(uid, parent) {
                             const messageElement = document.createElement('p');
-                            popup.appendChild(messageElement);
+                            parent.appendChild(messageElement);
                             const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
                             const user_link = insertLink(user.name, user_URL_params, messageElement);
                             user_link.style.color = 'inherit'
                             return messageElement;
                         }
 
+                        const div = document.createElement('div');
                         if (thread.tid != 0) {
                             for (let new_thread of new_threads) {
                                 const thread_title = new_thread.title;
-                                const messageElement = createParaAndInsertUserNameLink(user.uid);
+                                const messageElement = createParaAndInsertUserNameLink(user.uid, div);
                                 let message = ` 有`;
                                 if (!found_last && thread.tid != -1) {
                                     message += '超过';
@@ -928,7 +932,7 @@
                                 insertLink(thread_title, thread_URL_params, messageElement, 10);
                             }
                             if (!found_last && thread.tid == -1) {
-                                const messageElement = createParaAndInsertUserNameLink(user.uid);
+                                const messageElement = createParaAndInsertUserNameLink(user.uid, div);
                                 const text_element2 = document.createTextNode(' 有 ');
                                 messageElement.appendChild(text_element2);
                                 const reply_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
@@ -938,14 +942,14 @@
                         else if (thread.tid == 0) {
                             const notif_num = new_threads.length > 3 ? 3 : new_threads.length;
                             for (let i = 0; i < notif_num; i++) {
-                                const messageElement = createParaAndInsertUserNameLink(user.uid);
+                                const messageElement = createParaAndInsertUserNameLink(user.uid, div);
                                 const text_element = document.createTextNode(' 有新帖 ');
                                 messageElement.appendChild(text_element);
                                 const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_threads[i].tid };
                                 insertLink(new_threads[i].title, thread_URL_params, messageElement, 20);
                             }
                             if (new_threads.length > 3) {
-                                const messageElement = createParaAndInsertUserNameLink(user.uid);
+                                const messageElement = createParaAndInsertUserNameLink(user.uid, div);
                                 let message = ` 有另外 `;
                                 if (!found_last) {
                                     message += '超过';
@@ -956,7 +960,16 @@
                                 insertLink(`${new_threads.length - 3}条新帖`, thread_URL_params, messageElement);
                             }
                         }
-                    })
+                        popup.appendChild(div);
+                        notification_messages.push(div);
+                        return notification_messages;
+                    }).then(notification_messages => {
+                        // if (notification_messages.length > 0) {
+                        // const old_notification_messages = GM_getValue('notification_messages', []);
+                        // notification_messages = notification_messages.concat(old_notification_messages);
+                        // updateGMList('notification_messages', notification_messages);
+                        // }
+                    });
                 }
             }
         }
@@ -979,6 +992,7 @@
         let smilies_switch_str = unsafeWindow['smilies_switch'].toString();
         smilies_switch_str = smilies_switch_str.replace("STATICURL+'image/smiley/'+smilies_type['_'+type][1]+'/'", `('${original_smilies}'.split(',').includes(type.toString())?(STATICURL+'image/smiley/'+smilies_type['_'+type][1]+'/'):smilies_type['_'+type][1])`);
         if (mode == 'img') {
+            // TODO fastpost时有问题
             smilies_switch_str = smilies_switch_str.replace("'insertSmiley('+s[0]+')'", `"insertText('[img]"+smilieimg+"[/img]',strlen('[img]"+smilieimg+"[/img]'),0)"`);
         }
         smilies_switch = new Function('return ' + smilies_switch_str)();
@@ -992,6 +1006,7 @@
     }
 
     async function modifyBBCode2Html(original_smilies) {
+        // 可以正常使用，但由于modifyPostOnSubmit的缘故，同步弃用
         await checkVariableDefined('bbcode2html');
         let bbcode2html_str = unsafeWindow['bbcode2html'].toString();
         bbcode2html_str = bbcode2html_str.replace("STATICURL+'image/smiley/'+smilies_type['_'+typeid][1]+'/'", `('${original_smilies}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'+smilies_type['_'+typeid][1]+'/'):smilies_type['_'+typeid][1])`);
@@ -1000,7 +1015,8 @@
     }
 
     async function modifyPostOnSubmit(submit_id, original_smilies) {
-        // 不知道为什么，不这么做的话自定义表情在提交时会被转义成bbcode
+        // TODO 不知道为什么，不这么做的话自定义表情在提交时会被转义成bbcode
+        // TODO 但是对于fastpost的情况还是没法处理，所以暂时弃用
         const post = qS('#' + submit_id);
         submit_id = submit_id.replace('form', '');
         // const original_onsubmit_str = post.getAttribute('onsubmit').toString();
@@ -1012,22 +1028,22 @@
     // 主体运行
     // ========================================================================================================
     updateNotificationPopup();
-    insertFollowedListLink(); // TODO 不应该放在这
+    insertHelperSettingLink();
 
     if (hasReadPermission()) {
         if (location_params.loc == 'forum') {
             if (location_params.mod == 'viewthread') {
                 modifyPostPage();
-                insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
+                // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
                 // modifyPostOnSubmit('fastpostform', original_smilies);
             }
             if (location_params.mod == 'post') {
-                insertExtraSmilies('smiliesdiv', 'e_', original_smilies, new_smilies);
+                // insertExtraSmilies('smiliesdiv', 'e_', original_smilies, new_smilies);
                 // modifyBBCode2Html(original_smilies);
                 // modifyPostOnSubmit('postform', original_smilies);
             }
             if (location_params.mod == 'forumdisplay') {
-                insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
+                // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
                 // modifyPostOnSubmit('fastpostform', original_smilies);
             }
         }
@@ -1049,4 +1065,5 @@
 // TODO 黑名单
 // TODO 一键删除
 // TODO 表情代码
+// TODO 辅助换行
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
