@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.0.2
+// @version      0.6.0.3
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -344,6 +344,7 @@
 
         if (type == 'main') {
             let content = file_info;
+            document.original_url = location.href;
             content += (await getPageContent(document, 'main')).text;
             saveFile(title_name, content);
         }
