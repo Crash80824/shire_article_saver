@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.11
+// @version      0.6.1.12
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -130,7 +130,7 @@
         cursor: pointer;
     `;
 
-    const followed_list_popup_style = `
+    const helper_setting_popup_style = `
         position: fixed;
         top: 50%;
         left: 50%;
@@ -144,11 +144,22 @@
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     `;
 
-    const followed_list_popup_close_btn_style = `
-        position: absolute;
-        top: 5px;
-        right: 10px;
+    const helper_setting_popup_tab_container_style = `
+        display: flex;
+        justify-content: space-around;
+        border-bottom: 1px solid #ccc;
+        margin-bottom: 10px;
+        white-space: nowrap;
+    `;
+
+    const helper_setting_popup_tab_style = `
+        flex: 1;
+        padding: 10px;
+        border: none;
+        border-bottom: 2px solid transparent;
+        background-color: white;
         cursor: pointer;
+        outline: none;
     `;
 
     const follow_list_table_style = `
@@ -567,7 +578,7 @@
     function insertHelperSettingLink() {
         let target_menu = qS('#myitem')
         if (target_menu) {
-            const helper_setting = insertInteractiveLink('助手', () => { if (!qS('#followed-list-popup')) { createFollowedListPopup() } }, target_menu, 'insertBefore');
+            const helper_setting = insertInteractiveLink('助手', () => { if (!qS('#helper-setting-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
             helper_setting.id = 'helper_setting';
             const span = document.createElement('span');
             span.textContent = ' | ';
@@ -576,7 +587,7 @@
         }
         else {
             target_menu = qS('#myspace')
-            insertInteractiveLink('助手', () => { if (!qS('#followed-list-popup')) { createFollowedListPopup() } }, target_menu, 'insertBefore');
+            insertInteractiveLink('助手', () => { if (!qS('#helper-setting-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
         }
     }
     function insertElement(elem, pos, type = 'append') {
@@ -784,7 +795,7 @@
     // 浮动弹窗相关
     // ========================================================================================================
     window.addEventListener('click', (event) => {
-        const follow_list_popup = qS('#followed-list-popup');
+        const follow_list_popup = qS('#helper-setting-popup');
         const helper_setting = qS('#helper_setting');
         if (follow_list_popup && !follow_list_popup.contains(event.target) && !helper_setting.contains(event.target)) {
             document.body.removeChild(follow_list_popup);
@@ -792,25 +803,13 @@
     });
 
     window.addEventListener('keydown', (event) => {
-        const follow_list_popup = qS('#followed-list-popup');
+        const follow_list_popup = qS('#helper-setting-popup');
         if (follow_list_popup && event.key == 'Escape') {
             document.body.removeChild(follow_list_popup);
         }
     });
 
-    function createFollowedListPopup() {
-        const popup = document.createElement('div');
-        popup.id = 'followed-list-popup';
-        popup.style = followed_list_popup_style;
-        document.body.appendChild(popup);
-
-        // const close_btn = document.createElement('button');
-        // close_btn.className = 'close-btn';
-        // close_btn.style = followed_list_popup_close_btn_style;
-        // close_btn.onclick = () => { document.body.removeChild(popup) };
-        // close_btn.textContent = '✖';
-        // popup.appendChild(close_btn);
-
+    function createFollowListTable() {
         const table = document.createElement('table');
         table.style = follow_list_table_style;
         const followed_users = GM_getValue('followed_users', []);
@@ -865,7 +864,51 @@
             cell.style.textAlign = 'center';
             cell.style.padding = '8px';
         }
-        popup.appendChild(table);
+        return table;
+    }
+
+    function createHelperSettingPopup() {
+        const popup = document.createElement('div');
+        popup.id = 'helper-setting-popup';
+        popup.style = helper_setting_popup_style;
+
+        const tab_container = document.createElement('div');
+        tab_container.style = helper_setting_popup_tab_container_style;
+
+        const tabs = [{ 'name': '关注列表', 'func': createFollowListTable }];
+
+        const tab_buttons = tabs.map((tab, index) => {
+            const button = document.createElement('button');
+            button.textContent = tab.name;
+            button.style = helper_setting_popup_tab_style;
+
+            if (index === 0) {
+                button.style.borderBottom = '2px solid #007bff';
+            }
+
+            button.addEventListener('click', () => {
+                tab_contents.forEach((content, i) => {
+                    content.style.display = i === index ? 'block' : 'none';
+                });
+                tab_buttons.forEach(btn => btn.style.borderBottom = '2px solid transparent');
+                button.style.borderBottom = '2px solid #007bff';
+            });
+
+            tab_container.appendChild(button);
+            return button;
+        });
+
+        const tab_contents = tabs.map((tab, index) => {
+            const content = document.createElement('div');
+            content.style.display = index === 0 ? 'block' : 'none';
+            content.appendChild(tab.func());
+            return content;
+        });
+
+        popup.appendChild(tab_container);
+        tab_contents.forEach(content => popup.appendChild(content));
+        document.body.appendChild(popup);
+
     }
 
     function createNotificationPopup() {
