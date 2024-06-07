@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.10
+// @version      0.6.1.11
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -567,7 +567,8 @@
     function insertHelperSettingLink() {
         let target_menu = qS('#myitem')
         if (target_menu) {
-            insertInteractiveLink('助手', () => { if (!qS('#followed-list-popup')) { createFollowedListPopup() } }, target_menu, 'insertBefore');
+            const helper_setting = insertInteractiveLink('助手', () => { if (!qS('#followed-list-popup')) { createFollowedListPopup() } }, target_menu, 'insertBefore');
+            helper_setting.id = 'helper_setting';
             const span = document.createElement('span');
             span.textContent = ' | ';
             span.className = 'pipe';
@@ -784,7 +785,8 @@
     // ========================================================================================================
     window.addEventListener('click', (event) => {
         const follow_list_popup = qS('#followed-list-popup');
-        if (follow_list_popup && !follow_list_popup.contains(event.target)) {
+        const helper_setting = qS('#helper_setting');
+        if (follow_list_popup && !follow_list_popup.contains(event.target) && !helper_setting.contains(event.target)) {
             document.body.removeChild(follow_list_popup);
         }
     });
