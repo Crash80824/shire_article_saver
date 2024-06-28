@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1.12
+// @version      0.6.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -23,6 +23,11 @@
 
 (function () {
     'use strict';
+
+    const helper_default_setting = { 'enable_notification': true };
+    if (typeof GM_getValue('helper_setting') === 'undefined') {
+        GM_setValue('helper_setting', helper_default_setting);
+    }
 
     // ========================================================================================================
     // 常量和简单的工具函数
@@ -93,13 +98,10 @@
     // ========================================================================================================
     // 自定义表情
     // ========================================================================================================
-    const original_smilies = ['4'];
-    const new_smilies = [];
-    // const test_smilies = [['{:1haha1:}', 'animated-gif-0.webp']];
-    // new_smilies.push({ 'name': 'test', 'type': '10', 'path': 'https://p.upyun.com/demo/webp/webp', 'info': test_smilies.map((v, i) => ['10' + i, v[0], v[1], 20, 20, 50]) });
-
-    const test_smilies = [['{:1haha1:}', 'data/attachment/album/202207/04/192158kg0urgxtw2805yrs.png'], ['{:1loooove1:}', 'static/image/smiley/ali/1love1.gif']];
-    new_smilies.push({ 'name': 'test', 'type': '10', 'path': '', 'info': test_smilies.map((v, i) => ['10' + i, v[0], v[1], 20, 20, 50]) });
+    // const original_smilies_types = ['4'];
+    // const new_smilies = [];
+    // Element：{'name':name, 'type':type, 'path':path, 'info':[[id, smile_code, file_name, width, height, weight]]}
+    // Test images: 'data/attachment/album/202207/04/192158kg0urgxtw2805yrs.png','static/image/smiley/ali/1love1.gif',''https://p.upyun.com/demo/webp/webp/animated-gif-0.webp'
 
     // ========================================================================================================
     // 自定义样式
@@ -275,7 +277,6 @@
         }
         return url;
     }
-
 
     async function getPageDocInDomain(params, UA = null) {
         const url = createURLInDomain(params);
@@ -867,6 +868,41 @@
         return table;
     }
 
+    function createHistoryNotificationTable() {
+        const div = document.createElement('div');
+        const notification_messages = GM_getValue('notification_messages', []);
+        if (notification_messages.length > 0) {
+            for (let message of notification_messages) {
+                const p = document.createElement('p');
+                p.innerHTML = message;
+                div.appendChild(p);
+            }
+        }
+        else {
+            const p = document.createElement('p');
+            p.textContent = '暂无历史消息';
+            div.appendChild(p);
+        }
+        return div;
+    }
+
+    function createHelperSettingTable() {
+        const div = document.createElement('div');
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = helper_setting.enable_notification;
+        // checkbox.addEventListener('change', () => { helper_setting.enable_notification = checkbox.checked; GM.setValue('helper_setting', helper_setting) });
+        label.appendChild(checkbox);
+        const text = document.createTextNode('开启更新通知');
+        label.appendChild(text);
+        div.appendChild(label);
+        // 开启辅助换行
+        // 开启黑名单
+        // 清除数据
+        return div;
+    }
+
     function createHelperSettingPopup() {
         const popup = document.createElement('div');
         popup.id = 'helper-setting-popup';
@@ -875,7 +911,19 @@
         const tab_container = document.createElement('div');
         tab_container.style = helper_setting_popup_tab_container_style;
 
-        const tabs = [{ 'name': '关注列表', 'func': createFollowListTable }];
+        const tabs = [{ 'name': '设置', 'func': createHelperSettingTable }, { 'name': '关注列表', 'func': createFollowListTable }, { 'name': '历史消息', 'func': createHistoryNotificationTable }];
+        tabs.push({
+            'name': '调试', 'func': () => {
+                const div = document.createElement('div');
+                const all_value = GM_listValues();
+                all_value.forEach(element => {
+                    const p = document.createElement('p');
+                    p.textContent = element + ':' + JSON.stringify(GM_getValue(element));
+                    div.appendChild(p);
+                });
+                return div;
+            }
+        });
 
         const tab_buttons = tabs.map((tab, index) => {
             const button = document.createElement('button');
@@ -1006,14 +1054,12 @@
                             }
                         }
                         popup.appendChild(div);
-                        notification_messages.push(div);
+                        notification_messages.push(div.innerHTML);
                         return notification_messages;
                     }).then(notification_messages => {
-                        // if (notification_messages.length > 0) {
-                        // const old_notification_messages = GM_getValue('notification_messages', []);
-                        // notification_messages = notification_messages.concat(old_notification_messages);
-                        // updateGMList('notification_messages', notification_messages);
-                        // }
+                        const old_notification_messages = GM_getValue('notification_messages', []);
+                        notification_messages = notification_messages.concat(old_notification_messages);
+                        updateGMList('notification_messages', notification_messages);
                     });
                 }
             }
@@ -1032,10 +1078,10 @@
         }
     }
 
-    async function modifySmiliesSwitch(original_smilies, mode = 'img') {
+    async function modifySmiliesSwitch(original_smilies_types, mode = 'img') {
         await checkVariableDefined('smilies_switch');
         let smilies_switch_str = unsafeWindow['smilies_switch'].toString();
-        smilies_switch_str = smilies_switch_str.replace("STATICURL+'image/smiley/'+smilies_type['_'+type][1]+'/'", `('${original_smilies}'.split(',').includes(type.toString())?(STATICURL+'image/smiley/'+smilies_type['_'+type][1]+'/'):smilies_type['_'+type][1])`);
+        smilies_switch_str = smilies_switch_str.replace("STATICURL+'image/smiley/'+smilies_type['_'+type][1]+'/'", `('${original_smilies_types}'.split(',').includes(type.toString())?(STATICURL+'image/smiley/'+smilies_type['_'+type][1]+'/'):smilies_type['_'+type][1])`);
         if (mode == 'img') {
             // TODO fastpost时有问题
             smilies_switch_str = smilies_switch_str.replace("'insertSmiley('+s[0]+')'", `"insertText('[img]"+smilieimg+"[/img]',strlen('[img]"+smilieimg+"[/img]'),0)"`);
@@ -1044,52 +1090,56 @@
     }
 
 
-    async function insertExtraSmilies(id, seditorkey, original_smilies, new_smilies) {
+    async function insertExtraSmilies(id, seditorkey, original_smilies_types, new_smilies) {
         await modifySmiliesArray(new_smilies);
-        await modifySmiliesSwitch(original_smilies, 'img');
+        await modifySmiliesSwitch(original_smilies_types, 'img');
         smilies_show(id, 8, seditorkey);
     }
 
-    async function modifyBBCode2Html(original_smilies) {
+    async function modifyBBCode2Html(original_smilies_types) {
         // 可以正常使用，但由于modifyPostOnSubmit的缘故，同步弃用
         await checkVariableDefined('bbcode2html');
         let bbcode2html_str = unsafeWindow['bbcode2html'].toString();
-        bbcode2html_str = bbcode2html_str.replace("STATICURL+'image/smiley/'+smilies_type['_'+typeid][1]+'/'", `('${original_smilies}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'+smilies_type['_'+typeid][1]+'/'):smilies_type['_'+typeid][1])`);
+        bbcode2html_str = bbcode2html_str.replace("STATICURL+'image/smiley/'+smilies_type['_'+typeid][1]+'/'", `('${original_smilies_types}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'+smilies_type['_'+typeid][1]+'/'):smilies_type['_'+typeid][1])`);
         bbcode2html_str = bbcode2html_str.replace("}if(!fetchCheckbox('bbcodeoff')&&allowbbcode){", "}if(!fetchCheckbox('bbcodeoff')&&allowbbcode){")
         bbcode2html = new Function('return ' + bbcode2html_str)();
     }
 
-    async function modifyPostOnSubmit(submit_id, original_smilies) {
+    async function modifyPostOnSubmit(submit_id, original_smilies_types) {
         // TODO 不知道为什么，不这么做的话自定义表情在提交时会被转义成bbcode
         // TODO 但是对于fastpost的情况还是没法处理，所以暂时弃用
         const post = qS('#' + submit_id);
         submit_id = submit_id.replace('form', '');
         // const original_onsubmit_str = post.getAttribute('onsubmit').toString();
         // console.log(original_onsubmit_str);
-        post.setAttribute('onsubmit', `if(typeof smilies_type == 'object'){for (var typeid in smilies_array){for (var page in smilies_array[typeid]){for(var i in smilies_array[typeid][page]){re=new RegExp(preg_quote(smilies_array[typeid][page][i][1]),"g");this.message.value=this.message.value.replace(re,'[img]'+('${original_smilies}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'+ smilies_type['_' + typeid][1] + '/'):smilies_type['_' + typeid][1])+smilies_array[typeid][page][i][2]+"[/img]");}}}}`);
+        post.setAttribute('onsubmit', `if(typeof smilies_type == 'object'){for (var typeid in smilies_array){for (var page in smilies_array[typeid]){for(var i in smilies_array[typeid][page]){re=new RegExp(preg_quote(smilies_array[typeid][page][i][1]),"g");this.message.value=this.message.value.replace(re,'[img]'+('${original_smilies_types}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'+ smilies_type['_' + typeid][1] + '/'):smilies_type['_' + typeid][1])+smilies_array[typeid][page][i][2]+"[/img]");}}}}`);
     }
 
     // ========================================================================================================
     // 主体运行
     // ========================================================================================================
-    updateNotificationPopup();
+    const helper_setting = GM_getValue('helper_setting');
     insertHelperSettingLink();
+
+    if (helper_setting.enable_notification) {
+        updateNotificationPopup();
+    }
 
     if (hasReadPermission()) {
         if (location_params.loc == 'forum') {
             if (location_params.mod == 'viewthread') {
                 modifyPostPage();
-                // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
-                // modifyPostOnSubmit('fastpostform', original_smilies);
+                // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
+                // modifyPostOnSubmit('fastpostform', original_smilies_types);
             }
             if (location_params.mod == 'post') {
-                // insertExtraSmilies('smiliesdiv', 'e_', original_smilies, new_smilies);
-                // modifyBBCode2Html(original_smilies);
-                // modifyPostOnSubmit('postform', original_smilies);
+                // insertExtraSmilies('smiliesdiv', 'e_', original_smilies_types, new_smilies);
+                // modifyBBCode2Html(original_smilies_types);
+                // modifyPostOnSubmit('postform', original_smilies_types);
             }
             if (location_params.mod == 'forumdisplay') {
-                // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies, new_smilies);
-                // modifyPostOnSubmit('fastpostform', original_smilies);
+                // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
+                // modifyPostOnSubmit('fastpostform', original_smilies_types);
             }
         }
 
@@ -1103,12 +1153,11 @@
 })();
 
 // TODO 弹窗样式美化
-// TODO 历史消息
-// TODO 清除数据
+// DOING 历史消息
 // TODO 上传表情
-// TODO 设置面板
 // TODO 黑名单
 // TODO 一键删除
 // TODO 表情代码
+// TODO 清除数据
 // TODO 辅助换行
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
