@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.3.3
+// @version      0.6.3.4
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -24,7 +24,7 @@
 (function () {
     'use strict';
 
-    const helper_default_setting = { 'enable_notification': true };
+    const helper_default_setting = { 'enable_notification': true, 'enable_attach_download': true };
     if (typeof GM_getValue('helper_setting') === 'undefined') {
         GM_setValue('helper_setting', helper_default_setting);
     }
@@ -237,7 +237,7 @@
         followed_num += followed ? 1 : -1;
         followed_num = followed_num < 0 ? 0 : followed_num;
         GM.setValue('followed_num', followed_num);
-    };
+    }
 
     // ========================================================================================================
     // 获取页面或帖子非正文内容的函数
@@ -359,7 +359,7 @@
     async function getPageContent(page_doc, type = 'main') {
         if (!page_doc.original_url) {
             page_doc.original_url = page_doc.URL;
-        };
+        }
 
         const tid = page_doc.original_url.parseURL().tid;
         let page_id = page_doc.original_url.parseURL().page;
@@ -409,34 +409,37 @@
         const blob = new Blob([buffer], { type: 'text/plain;base64' });
         const reader = new FileReader();
         reader.readAsDataURL(blob);
-        reader.onload = function (e) {
+        reader.onload = e => {
             const a = document.createElement('a');
             a.download = filename;
             a.href = e.target.result;
             a.click();
         };
 
-        for (let i = 0; i < attach.length; i++) {
-            const attach_url = location.origin + '/main/' + attach[i].url;
-            const attach_title = attach[i].title;
-            const attach_type = attach_url.split('.').pop();
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: attach_url,
-                responseType: 'blob',
-                onload: function (response) {
-                    const blob = response.response;
-                    const reader = new FileReader();
-                    reader.readAsDataURL(blob);
-                    reader.onload = function (e) {
-                        const a = document.createElement('a');
-                        a.download = `${filename}_${attach_title}.${attach_type}`;
-                        a.href = e.target.result;
-                        a.click();
-                    };
-                }
-            });
-        };
+        const helper_setting = GM_getValue('helper_setting');
+        if (helper_setting.enable_attach_download) {
+            for (let i = 0; i < attach.length; i++) {
+                const attach_url = location.origin + '/main/' + attach[i].url;
+                const attach_title = attach[i].title;
+                const attach_type = attach_url.split('.').pop();
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: attach_url,
+                    responseType: 'blob',
+                    onload: response => {
+                        const blob = response.response;
+                        const reader = new FileReader();
+                        reader.readAsDataURL(blob);
+                        reader.onload = e => {
+                            const a = document.createElement('a');
+                            a.download = `${filename}_${attach_title}.${attach_type}`;
+                            a.href = e.target.result;
+                            a.click();
+                        };
+                    }
+                });
+            };
+        }
     }
 
     async function saveThread(type = 'main') {
@@ -939,34 +942,74 @@
         return div;
     }
 
-    function createHelperSettingTable() {
-        const div = document.createElement('div');
-
-        // 开启更新通知
+    function createHelperSettingCheckbox(text, checked, onchange) {
         const label = document.createElement('label');
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = helper_setting.enable_notification;
-        // checkbox.addEventListener('change', () => { helper_setting.enable_notification = checkbox.checked; GM.setValue('helper_setting', helper_setting) });
+        checkbox.checked = checked;
+        checkbox.addEventListener('change', onchange);
         label.appendChild(checkbox);
-        const text = document.createTextNode('开启更新通知');
-        label.appendChild(text);
-        div.appendChild(label);
+        const text_node = document.createTextNode(text);
+        label.appendChild(text_node);
+        return label;
+    }
+
+    function createHelperSettingButton(text, onclick) {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.addEventListener('click', onclick);
+        return btn;
+    }
+
+    function createHelperSettingTable() {
+        const table = document.createElement('table');
+        const cols = 3;
+        table.style = follow_list_table_style;
+
+        const addItems = items => {
+            let tr = table.insertRow();
+            for (let i = 0; i < items.length; i++) {
+                if (i > 0 && i % 3 === 0) {
+                    tr = table.insertRow();
+                }
+                const td = tr.insertCell();
+                console.log(items[i]);
+                td.appendChild(items[i]);
+            }
+        }
+
+        let checkboxs = [];
+        let buttons = []
+
+        // 开启更新通知
+        checkboxs.push(createHelperSettingCheckbox('更新通知', helper_setting.enable_notification,
+            (e) => {
+                helper_setting.enable_notification = e.target.checked;
+                GM.setValue('helper_setting', helper_setting);
+            }));
+
+        // 开启附件下载
+        checkboxs.push(createHelperSettingCheckbox('附件下载', helper_setting.enable_attach_download,
+            (e) => {
+                helper_setting.enable_attach_download = e.target.checked;
+                GM.setValue('helper_setting', helper_setting);
+            }));
 
         // 清除历史消息
-        const btn = document.createElement('button');
-        btn.textContent = '清空消息';
-        btn.addEventListener('click', () => {
+        buttons.push(createHelperSettingButton('清空消息', () => {
             const confirm = window.confirm('确定清空历史消息？');
             if (confirm) {
                 GM.deleteValue('notification_messages');
                 location.reload();
             }
-        });
-        div.appendChild(btn);
+        }));
         // 开启辅助换行
         // 开启黑名单
-        return div;
+
+        addItems(checkboxs);
+        addItems(buttons);
+
+        return table;
     }
 
     function createHelperSettingPopup() {
@@ -1220,6 +1263,7 @@
 
 // TODO 弹窗样式美化
 // TODO 合并保存选项
+// TODO 打包ZIP
 // TODO 用户改名提醒
 // TODO 自动回复
 // TODO 上传表情
