@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.2.1
+// @version      0.6.3
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -333,10 +333,23 @@
                     text += child.textContent;
             }
         }
-        return { 'text': text, 'image': [] }
+
+        let image_list = qS('#imagelist_' + pid, page_doc); // 多图
+        if (!image_list) {
+            image_list = qS('.pattl', page_doc); // 单图
+        }
+        let image_urls = [];
+        if (image_list) {
+            image_urls = Array.from(qSA('img', image_list)).map(e => e.getAttribute('zoomfile'));
+        }
+        return { 'text': text, 'images': image_urls };
     }
 
     async function getPageContent(page_doc, type = 'main') {
+        if (!page_doc.original_url) {
+            page_doc.original_url = page_doc.URL;
+        };
+
         const tid = page_doc.original_url.parseURL().tid;
         let page_id = page_doc.original_url.parseURL().page;
         if (!page_id) {
@@ -346,6 +359,7 @@
         const posts_in_page = getPostsInPage(page_doc);
 
         let text = '';
+        let images = [];
         for (let post of posts_in_page) {
             if (type == 'checked') {
                 const post_id = getPostId(post);
@@ -355,6 +369,9 @@
             }
             const post_info = getPostInfo(post, page_doc);
             const post_content = getPostContent(post_info.post_id, page_doc);
+
+            images.push(...post_content.images);
+
             if (type != 'main') {
                 text += '<----------------\n';
             }
@@ -364,18 +381,20 @@
             if (type != 'main') {
                 text += '\n---------------->\n';
             }
+
             if (type == 'main') {
                 break;
             }
         }
-        return { 'tid': tid, 'page_id': page_id, 'text': text, 'image': [] };
+        return { 'tid': tid, 'page_id': page_id, 'text': text, 'images': images };
     }
 
     // ========================================================================================================
     // 保存与下载的函数
     // ========================================================================================================
-    function saveFile(filename, content) {
-        const buffer = new TextEncoder().encode(content).buffer;
+    function saveFile(filename, text, images = []) {
+
+        const buffer = new TextEncoder().encode(text).buffer;
         const blob = new Blob([buffer], { type: 'text/plain;base64' });
         const reader = new FileReader();
         reader.readAsDataURL(blob);
@@ -385,6 +404,26 @@
             a.href = e.target.result;
             a.click();
         };
+
+        for (let i = 0; i < images.length; i++) {
+            const image_url = location.origin + '/main/' + images[i];
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: image_url,
+                responseType: 'blob',
+                onload: function (response) {
+                    const blob = response.response;
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onload = function (e) {
+                        const a = document.createElement('a');
+                        a.download = `${filename}_image${i}.${images[i].split('.').pop()}`;
+                        a.href = e.target.result;
+                        a.click();
+                    };
+                }
+            });
+        };
     }
 
     async function saveThread(type = 'main') {
@@ -393,9 +432,10 @@
         let file_info = `Link: ${location.href}\n****************\n`;
 
         if (type == 'main') {
-            let content = file_info;
-            content += (await getPageContent(document, 'main')).text;
-            saveFile(title_name, content);
+            let text = file_info;
+            let content = await getPageContent(document, 'main');
+            text += content.text;
+            saveFile(title_name, text, content.images);
         }
         else {
             let filename = title_name;
@@ -1166,8 +1206,7 @@
 })();
 
 // TODO 弹窗样式美化
-// TODO 合并保存选项
-// TODO 用户改名提醒
+// DOING 历史消息
 // TODO 上传表情
 // TODO 黑名单
 // TODO 一键删除
