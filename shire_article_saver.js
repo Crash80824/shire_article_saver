@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.3.1
+// @version      0.6.3.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -339,11 +339,20 @@
         if (!image_list) {
             image_list = qS('.pattl', page_doc); // 单图
         }
-        let attachment_urls = [];
+        let attachments = [];
         if (image_list) {
-            attachment_urls = Array.from(qSA('img', image_list)).map(e => e.getAttribute('zoomfile'));
+            image_list = qSA('img', image_list);
+            for (let i = 0; i < image_list.length; i++) {
+                const img = image_list[i];
+                const img_url = img.getAttribute('zoomfile');
+                let img_title = img.title;
+                if (!startWithChinese(img_title)) {
+                    img_title = `${i + 1}`;
+                }
+                attachments.push({ 'url': img_url, 'title': img_title });
+            }
         }
-        return { 'text': text, 'attach': attachment_urls };
+        return { 'text': text, 'attach': attachments };
     }
 
     async function getPageContent(page_doc, type = 'main') {
@@ -407,10 +416,12 @@
         };
 
         for (let i = 0; i < attach.length; i++) {
-            const attachment_url = location.origin + '/main/' + attach[i];
+            const attach_url = location.origin + '/main/' + attach[i].url;
+            const attach_title = attach[i].title;
+            const attach_type = attach_url.split('.').pop();
             GM_xmlhttpRequest({
                 method: 'GET',
-                url: attachment_url,
+                url: attach_url,
                 responseType: 'blob',
                 onload: function (response) {
                     const blob = response.response;
@@ -418,7 +429,7 @@
                     reader.readAsDataURL(blob);
                     reader.onload = function (e) {
                         const a = document.createElement('a');
-                        a.download = `${filename}_image${i}.${attach[i].split('.').pop()}`;
+                        a.download = `${filename}_${attach_title}.${attach_type}`;
                         a.href = e.target.result;
                         a.click();
                     };
