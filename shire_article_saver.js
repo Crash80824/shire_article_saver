@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.2
+// @version      0.6.2.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -888,6 +888,8 @@
 
     function createHelperSettingTable() {
         const div = document.createElement('div');
+
+        // 开启更新通知
         const label = document.createElement('label');
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
@@ -897,9 +899,20 @@
         const text = document.createTextNode('开启更新通知');
         label.appendChild(text);
         div.appendChild(label);
+
+        // 清除历史消息
+        const btn = document.createElement('button');
+        btn.textContent = '清空消息';
+        btn.addEventListener('click', () => {
+            const confirm = window.confirm('确定清空历史消息？');
+            if (confirm) {
+                GM.deleteValue('notification_messages');
+                location.reload();
+            }
+        });
+        div.appendChild(btn);
         // 开启辅助换行
         // 开启黑名单
-        // 清除数据
         return div;
     }
 
@@ -1153,7 +1166,8 @@
 })();
 
 // TODO 弹窗样式美化
-// DOING 历史消息
+// TODO 合并保存选项
+// TODO 用户改名提醒
 // TODO 上传表情
 // TODO 黑名单
 // TODO 一键删除
