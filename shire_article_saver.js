@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.3.2
+// @version      0.6.3.3
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -61,6 +61,7 @@
         })());
     });
     const startWithChinese = str => /^[\p{Script=Han}]/u.test(str);
+    const removeImageExtension = str => str.replace(/\.(png|jpg|jpeg)$/i, '');
 
 
     const checkVariableDefined = (variable_name, timeout = 15000, time_interval = 100) => new Promise((resolve, reject) => {
@@ -345,7 +346,7 @@
             for (let i = 0; i < image_list.length; i++) {
                 const img = image_list[i];
                 const img_url = img.getAttribute('zoomfile');
-                let img_title = img.title;
+                let img_title = removeImageExtension(img.title)
                 if (!startWithChinese(img_title)) {
                     img_title = `${i + 1}`;
                 }
