@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.3.4
+// @version      0.6.3.5
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -307,7 +307,9 @@
     // 获取帖子和楼层内容的函数
     // ========================================================================================================
     function getPostContent(pid, page_doc = document) {
-        const tf = qS('#postmessage_' + pid, page_doc);
+        const post = qS('#post_' + pid, page_doc);
+
+        const tf = qS('#postmessage_' + pid, post);
         let children_nodes = tf.childNodes;
         let text = '';
         for (let child of children_nodes) {
@@ -336,9 +338,9 @@
             }
         }
 
-        let image_list = qS('#imagelist_' + pid, page_doc); // 多图
+        let image_list = qS('#imagelist_' + pid, post); // 多图
         if (!image_list) {
-            image_list = qS('.pattl', page_doc); // 单图
+            image_list = qS('.pattl', post); // 单图
         }
         let attachments = [];
         if (image_list) {
@@ -348,9 +350,10 @@
                 const img_url = img.getAttribute('zoomfile');
                 let img_title = removeImageExtension(img.title)
                 if (!startWithChinese(img_title)) {
-                    img_title = `${i + 1}`;
+                    img_title = '';
                 }
                 attachments.push({ 'url': img_url, 'title': img_title });
+
             }
         }
         return { 'text': text, 'attach': attachments };
@@ -380,6 +383,7 @@
             }
             const post_info = getPostInfo(post, page_doc);
             const post_content = getPostContent(post_info.post_id, page_doc);
+            console.log(post_content.attach);
 
             attach.push(...post_content.attach);
 
@@ -411,7 +415,7 @@
         reader.readAsDataURL(blob);
         reader.onload = e => {
             const a = document.createElement('a');
-            a.download = filename;
+            a.download = filename + '.txt';
             a.href = e.target.result;
             a.click();
         };
@@ -420,7 +424,7 @@
         if (helper_setting.enable_attach_download) {
             for (let i = 0; i < attach.length; i++) {
                 const attach_url = location.origin + '/main/' + attach[i].url;
-                const attach_title = attach[i].title;
+                const attach_title = attach[i].title || `附${i + 1}`;
                 const attach_type = attach_url.split('.').pop();
                 GM_xmlhttpRequest({
                     method: 'GET',
@@ -455,7 +459,8 @@
         }
         else {
             let filename = title_name;
-            let content = file_info;
+            let text = file_info;
+            let attach = [];
             const page_author = getThreadAuthorInfo();
             const specific_authorid = location.href.parseURL().authorid;
             const is_only_author = specific_authorid == page_author.id;
@@ -488,8 +493,9 @@
             });
             let content_list = await Promise.all(promises);
             content_list.sort((a, b) => a.page_id - b.page_id);
-            content += content_list.map(e => e.text).join('');
-            saveFile(filename, content);
+            text += content_list.map(e => e.text).join('');
+            attach.push(...content_list.map(e => e.attach).flat());
+            saveFile(filename, text, attach);
             if (type == 'checked') {
                 GM.deleteValue(thread_id + '_checked_posts');
             }
@@ -1263,7 +1269,6 @@
 
 // TODO 弹窗样式美化
 // TODO 合并保存选项
-// TODO 打包ZIP
 // TODO 用户改名提醒
 // TODO 自动回复
 // TODO 上传表情
