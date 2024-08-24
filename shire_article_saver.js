@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.3.5
+// @version      0.6.3.6
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -306,6 +306,38 @@
     // ========================================================================================================
     // 获取帖子和楼层内容的函数
     // ========================================================================================================
+    function getPostChildNodeText(child) {
+        let text = '';
+        switch (child.tagName + '.' + child.className) {
+            case 'STYLE.':
+            case 'SCRIPT.':
+            case 'TABLE.op':
+                break;
+            case 'DIV.quote':
+                {
+                    text += '<<<\n';
+                    let quote_href = qS('td > div > blockquote > font > a', child);
+                    if (quote_href) {
+                        let origin_quote = quote_href.innerText;
+                        quote_href.innerText += ` PID:${quote_href.href.parseURL().pid}`;
+                        text += child.textContent + '\n';
+                        quote_href.innerText = origin_quote;
+                    }
+                    else {
+                        text += child.textContent + '\n'
+                    }
+                    text += '>>>\n';
+                }
+                break;
+            case 'HR.l':
+                text += '++++++++\n';
+                break;
+            default:
+                text += child.textContent;
+        }
+        return text;
+    }
+
     function getPostContent(pid, page_doc = document) {
         const post = qS('#post_' + pid, page_doc);
 
@@ -313,29 +345,7 @@
         let children_nodes = tf.childNodes;
         let text = '';
         for (let child of children_nodes) {
-            switch (child.tagName + '.' + child.className) {
-                case 'DIV.quote':
-                    {
-                        text += '<<<\n';
-                        let quote_href = qS('td > div > blockquote > font > a', child);
-                        if (quote_href) {
-                            let origin_quote = quote_href.innerText;
-                            quote_href.innerText += ` PID:${quote_href.href.parseURL().pid}`;
-                            text += child.textContent + '\n';
-                            quote_href.innerText = origin_quote;
-                        }
-                        else {
-                            text += child.textContent + '\n'
-                        }
-                        text += '>>>\n';
-                    }
-                    break;
-                case 'HR.l':
-                    text += '++++++++\n';
-                    break;
-                default:
-                    text += child.textContent;
-            }
+            text += getPostChildNodeText(child);
         }
 
         let image_list = qS('#imagelist_' + pid, post); // 多图
@@ -383,7 +393,6 @@
             }
             const post_info = getPostInfo(post, page_doc);
             const post_content = getPostContent(post_info.post_id, page_doc);
-            console.log(post_content.attach);
 
             attach.push(...post_content.attach);
 
