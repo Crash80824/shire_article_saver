@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.3.6
+// @version      0.6.3.7
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -312,6 +312,7 @@
             case 'STYLE.':
             case 'SCRIPT.':
             case 'TABLE.op':
+            case 'IGNORE_JS_OP.':
                 break;
             case 'DIV.quote':
                 {
@@ -988,7 +989,6 @@
                     tr = table.insertRow();
                 }
                 const td = tr.insertCell();
-                console.log(items[i]);
                 td.appendChild(items[i]);
             }
         }
