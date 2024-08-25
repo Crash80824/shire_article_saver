@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.3.7
+// @version      0.6.4
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -24,7 +24,7 @@
 (function () {
     'use strict';
 
-    const helper_default_setting = { 'enable_notification': true, 'enable_attach_download': true };
+    const helper_default_setting = { 'enable_notification': true, 'enable_attach_download': true, 'enable_op_download': true };
     if (typeof GM_getValue('helper_setting') === 'undefined') {
         GM_setValue('helper_setting', helper_default_setting);
     }
@@ -61,7 +61,7 @@
         })());
     });
     const startWithChinese = str => /^[\p{Script=Han}]/u.test(str);
-    const removeImageExtension = str => str.replace(/\.(png|jpg|jpeg)$/i, '');
+    const removeExtension = str => str.replace(/\.(png|jpg|jpeg|mp3|mp4|mkv|avi)$/i, '');
 
 
     const checkVariableDefined = (variable_name, timeout = 15000, time_interval = 100) => new Promise((resolve, reject) => {
@@ -359,7 +359,7 @@
             for (let i = 0; i < image_list.length; i++) {
                 const img = image_list[i];
                 const img_url = img.getAttribute('zoomfile');
-                let img_title = removeImageExtension(img.title)
+                let img_title = removeExtension(img.title)
                 if (!startWithChinese(img_title)) {
                     img_title = '';
                 }
@@ -367,7 +367,17 @@
 
             }
         }
-        return { 'text': text, 'attach': attachments };
+
+        let op_body = qS('[id^="op-"][id$="-body"]', post);
+        let op_urls = [];
+        if (op_body) {
+            const url_list = qSA('a', op_body);
+            for (let url of url_list) {
+                op_urls.push({ 'url': url.href, 'title': removeExtension(url.textContent) });
+            }
+        }
+
+        return { 'text': text, 'attach': attachments, 'op': op_urls };
     }
 
     async function getPageContent(page_doc, type = 'main') {
@@ -385,6 +395,7 @@
 
         let text = '';
         let attach = [];
+        let op = [];
         for (let post of posts_in_page) {
             if (type == 'checked') {
                 const post_id = getPostId(post);
@@ -396,6 +407,7 @@
             const post_content = getPostContent(post_info.post_id, page_doc);
 
             attach.push(...post_content.attach);
+            op.push(...post_content.op);
 
             if (type != 'main') {
                 text += '<----------------\n';
@@ -411,48 +423,56 @@
                 break;
             }
         }
-        return { 'tid': tid, 'page_id': page_id, 'text': text, 'attach': attach };
+        return { 'tid': tid, 'page_id': page_id, 'text': text, 'attach': attach, 'op': op };
     }
 
     // ========================================================================================================
     // 保存与下载的函数
     // ========================================================================================================
-    function saveFile(filename, text, attach = []) {
+    async function saveFile(filename, text, attach = [], op = []) {
+        // const buffer = new TextEncoder().encode(text).buffer;
+        // const blob = new Blob([buffer], { type: 'text/plain;base64' });
+        // const reader = new FileReader();
+        // reader.readAsDataURL(blob);
+        // reader.onload = e => {
+        //     const a = document.createElement('a');
+        //     a.download = filename + '.txt';
+        //     a.href = e.target.result;
+        //     a.click();
+        // };
 
-        const buffer = new TextEncoder().encode(text).buffer;
-        const blob = new Blob([buffer], { type: 'text/plain;base64' });
-        const reader = new FileReader();
-        reader.readAsDataURL(blob);
-        reader.onload = e => {
-            const a = document.createElement('a');
-            a.download = filename + '.txt';
-            a.href = e.target.result;
-            a.click();
-        };
-
-        const helper_setting = GM_getValue('helper_setting');
-        if (helper_setting.enable_attach_download) {
-            for (let i = 0; i < attach.length; i++) {
-                const attach_url = location.origin + '/main/' + attach[i].url;
-                const attach_title = attach[i].title || `附${i + 1}`;
-                const attach_type = attach_url.split('.').pop();
-                GM_xmlhttpRequest({
+        const downloadFromURLs = (url_list, prefix = filename + '_') => {
+            for (let i = 0; i < url_list.length; i++) {
+                const url = url_list[i].url;
+                const title = url_list[i].title || `${i + 1}`;
+                GM.xmlhttpRequest({
                     method: 'GET',
-                    url: attach_url,
+                    url: url,
                     responseType: 'blob',
                     onload: response => {
+                        const type = response.responseHeaders.match(/Content-Type:\s*([\w\/-]+)/i)[1].split('/')[1]
                         const blob = response.response;
                         const reader = new FileReader();
                         reader.readAsDataURL(blob);
                         reader.onload = e => {
                             const a = document.createElement('a');
-                            a.download = `${filename}_${attach_title}.${attach_type}`;
+                            a.download = `${prefix}${title}.${type}`;
                             a.href = e.target.result;
                             a.click();
                         };
                     }
                 });
-            };
+            }
+        };
+
+        const helper_setting = GM_getValue('helper_setting');
+        if (helper_setting.enable_attach_download) {
+            attach.forEach(e => e.url = location.origin + '/main/' + e.url);
+            downloadFromURLs(attach, filename + '_附');
+        }
+
+        if (helper_setting.enable_op_download) {
+            downloadFromURLs(op.slice(0, 1), '');
         }
     }
 
@@ -465,12 +485,13 @@
             let text = file_info;
             let content = await getPageContent(document, 'main');
             text += content.text;
-            saveFile(title_name, text, content.attach);
+            saveFile(title_name, text, content.attach, content.op);
         }
         else {
             let filename = title_name;
             let text = file_info;
             let attach = [];
+            let op = [];
             const page_author = getThreadAuthorInfo();
             const specific_authorid = location.href.parseURL().authorid;
             const is_only_author = specific_authorid == page_author.id;
@@ -505,7 +526,8 @@
             content_list.sort((a, b) => a.page_id - b.page_id);
             text += content_list.map(e => e.text).join('');
             attach.push(...content_list.map(e => e.attach).flat());
-            saveFile(filename, text, attach);
+            op.push(...content_list.map(e => e.op).flat());
+            saveFile(filename, text, attach, op);
             if (type == 'checked') {
                 GM.deleteValue(thread_id + '_checked_posts');
             }
@@ -1010,6 +1032,13 @@
                 GM.setValue('helper_setting', helper_setting);
             }));
 
+        // 开启原创保护资源下载
+        checkboxs.push(createHelperSettingCheckbox('原创保护资源下载', helper_setting.enable_op_download,
+            (e) => {
+                helper_setting.enable_op_download = e.target.checked;
+                GM.setValue('helper_setting', helper_setting);
+            }));
+
         // 清除历史消息
         buttons.push(createHelperSettingButton('清空消息', () => {
             const confirm = window.confirm('确定清空历史消息？');
@@ -1286,4 +1315,5 @@
 // TODO 表情代码
 // TODO 清除数据
 // TODO 辅助换行
+// TODO 置顶重复
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
