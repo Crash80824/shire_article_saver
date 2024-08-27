@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4.3
+// @version      0.6.4.4
 // @description  Download shire thread content.
-// @author       Crash
+// @author       80824
 // @match        https://www.shireyishunjian.com/main/*
 // @match        https://www.shishirere.com/main/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
@@ -487,8 +487,6 @@
     }
 
     async function saveFile(filename, text, attach = [], op = []) {
-        const helper_setting = GM_getValue('helper_setting');
-
         const something_to_save = helper_setting.enable_text_download || (helper_setting.enable_attach_download && attach.length > 0) || (helper_setting.enable_op_download && op.length > 0);
         if (!something_to_save) {
             alert('没有需要保存的内容, 请检查设置.');
@@ -567,7 +565,6 @@
                 return getPageContent(page_doc, type);
             });
             let content_list = await Promise.all(promises);
-            console.log(content_list);
             content_list.sort((a, b) => a.page_id - b.page_id);
             text += content_list.map(e => e.text).join('');
             attach.push(...content_list.map(e => e.attach).flat());
@@ -718,8 +715,8 @@
     function insertHelperSettingLink() {
         let target_menu = qS('#myitem')
         if (target_menu) {
-            const helper_setting = insertInteractiveLink('助手', () => { if (!qS('#helper-setting-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
-            helper_setting.id = 'helper_setting';
+            const helper_setting_link = insertInteractiveLink('助手', () => { if (!qS('#helper-setting-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
+            helper_setting_link.id = 'helper_setting';
             const span = document.createElement('span');
             span.textContent = ' | ';
             span.className = 'pipe';
@@ -910,6 +907,7 @@
 
     async function modifySpacePage() {
         let URL_info = location.href.parseURL();
+        console.log(URL_info);
         if (!Boolean(URL_info.type)) {
             URL_info.type = 'thread'
         }
@@ -929,6 +927,20 @@
             insertLink(`${name}的主题`, URL_params, toptb);
             insertFollowBtn({ 'uid': URL_info.uid, 'name': name, 'tid': URL_info.type == 'reply' ? -1 : 0 }, toptb);
         }
+
+        if (URL_info.mod == 'space' && URL_info.uid == GM_info.script.author && URL_info.do == 'wall' && URL_info.loc == 'home') {
+            const pos = qS('#pcd > div > ul');
+            const label = document.createElement('label');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = helper_setting.enable_debug_mode;
+            checkbox.addEventListener('change', () => { helper_setting.enable_debug_mode = checkbox.checked; GM.setValue('helper_setting', helper_setting); });
+            const text = document.createTextNode('调试模式');
+            label.appendChild(checkbox);
+            label.appendChild(text);
+            pos.appendChild(label);
+        }
+
     }
 
     // ========================================================================================================
@@ -936,8 +948,8 @@
     // ========================================================================================================
     window.addEventListener('click', (event) => {
         const follow_list_popup = qS('#helper-setting-popup');
-        const helper_setting = qS('#helper_setting');
-        if (follow_list_popup && !follow_list_popup.contains(event.target) && !helper_setting.contains(event.target)) {
+        const helper_setting_link = qS('#helper_setting');
+        if (follow_list_popup && !follow_list_popup.contains(event.target) && !helper_setting_link.contains(event.target)) {
             document.body.removeChild(follow_list_popup);
         }
     });
@@ -1117,18 +1129,20 @@
         tab_container.style = helper_setting_popup_tab_container_style;
 
         const tabs = [{ 'name': '设置', 'func': createHelperSettingTable }, { 'name': '关注列表', 'func': createFollowListTable }, { 'name': '历史消息', 'func': createHistoryNotificationTable }];
-        tabs.push({
-            'name': '调试', 'func': () => {
-                const div = document.createElement('div');
-                const all_value = GM_listValues();
-                all_value.forEach(element => {
-                    const p = document.createElement('p');
-                    p.textContent = element + ':' + JSON.stringify(GM_getValue(element));
-                    div.appendChild(p);
-                });
-                return div;
-            }
-        });
+        if (helper_setting.enable_debug_mode) {
+            tabs.push({
+                'name': '调试', 'func': () => {
+                    const div = document.createElement('div');
+                    const all_value = GM_listValues();
+                    all_value.forEach(element => {
+                        const p = document.createElement('p');
+                        p.textContent = element + ':' + JSON.stringify(GM_getValue(element));
+                        div.appendChild(p);
+                    });
+                    return div;
+                }
+            });
+        }
 
         const tab_buttons = tabs.map((tab, index) => {
             const button = document.createElement('button');
@@ -1363,10 +1377,10 @@
 // TODO 下载进度条
 // TODO 自动回复
 // TODO 清除数据
+// TODO 删除键值
 // TODO 保证弹窗弹出
 
 // 次优先
-// TODO 调试模式
 // TODO 弹窗样式美化
 // TODO 黑名单
 // TODO 一键删除
