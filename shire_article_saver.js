@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4.6
+// @version      0.6.4.7
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1051,12 +1051,15 @@
         return div;
     }
 
-    function createHelperSettingCheckbox(text, checked, onchange) {
+    function createHelperSettingCheckbox(text, attr) {
         const label = document.createElement('label');
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = checked;
-        checkbox.addEventListener('change', onchange);
+        checkbox.checked = helper_setting[attr];
+        checkbox.addEventListener('change', (e) => {
+            helper_setting[attr] = e.target.checked;
+            GM.setValue('helper_setting', helper_setting);
+        });
         label.appendChild(checkbox);
         const text_node = document.createTextNode(text);
         label.appendChild(text_node);
@@ -1087,42 +1090,23 @@
         }
 
         let checkboxs = [];
+        let options = [];
         let buttons = []
 
         // 开启文本下载
-        checkboxs.push(createHelperSettingCheckbox('文本下载', helper_setting.enable_text_download,
-            (e) => {
-                helper_setting.enable_text_download = e.target.checked;
-                GM.setValue('helper_setting', helper_setting);
-            }));
+        checkboxs.push(createHelperSettingCheckbox('文本下载', 'enable_text_download'));
 
         // 开启附件下载
-        checkboxs.push(createHelperSettingCheckbox('附件下载', helper_setting.enable_attach_download,
-            (e) => {
-                helper_setting.enable_attach_download = e.target.checked;
-                GM.setValue('helper_setting', helper_setting);
-            }));
+        checkboxs.push(createHelperSettingCheckbox('附件下载', 'enable_attach_download'));
 
         // 开启原创保护资源下载
-        checkboxs.push(createHelperSettingCheckbox('资源下载', helper_setting.enable_op_download,
-            (e) => {
-                helper_setting.enable_op_download = e.target.checked;
-                GM.setValue('helper_setting', helper_setting);
-            }));
+        checkboxs.push(createHelperSettingCheckbox('资源下载', 'enable_op_download'));
 
         // 开启更新通知
-        checkboxs.push(createHelperSettingCheckbox('更新通知', helper_setting.enable_notification,
-            (e) => {
-                helper_setting.enable_notification = e.target.checked;
-                GM.setValue('helper_setting', helper_setting);
-            }));
+        checkboxs.push(createHelperSettingCheckbox('更新通知', 'enable_notification'));
 
         // 开启历史消息
-        checkboxs.push(createHelperSettingCheckbox('历史消息', helper_setting.enable_history,
-            (e) => {
-                helper_setting.enable_history = e.target.checked;
-                GM.setValue('helper_setting', helper_setting);
-            }));
+        checkboxs.push(createHelperSettingCheckbox('历史消息', 'enable_history'));
 
         // 清除历史消息
         if (helper_setting.enable_history) {
@@ -1357,14 +1341,6 @@
     const helper_setting = GM_getValue('helper_setting');
     insertHelperSettingLink();
 
-    let fl = GM_getValue('followed_users', []);
-    updateGMListElements(fl, { 'uid': GM_info.script.author, 'name': 'BK' }, true, (a, b) => a.uid == b.uid);
-    updateGMList('followed_users', fl);
-    let mft = GM_getValue(`${GM_info.script.author}_followed_threads`, []);
-    updateGMListElements(mft, { 'tid': -1, 'title': '所有回复', 'last_tpid': "3515791" }, true, (a, b) => a.tid == b.tid);
-    updateGMListElements(mft, { 'tid': 275789, 'title': '摘抄', 'last_tpid': "3515791" }, true, (a, b) => a.tid == b.tid);
-    updateGMList(`${GM_info.script.author}_followed_threads`, mft);
-
     if (helper_setting.enable_notification) {
         updateNotificationPopup();
     }
@@ -1403,7 +1379,6 @@
 // TODO 自动回复
 // TODO 清除数据
 // TODO 删除键值
-// TODO 回复提醒定位
 // TODO 保证弹窗弹出
 
 // 次优先
