@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4.1
+// @version      0.6.4.2
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -1177,7 +1177,7 @@
             let popup = qS('#nofication-popup');
             const notification_messages = [];
             for (let user of followed_users) {
-                let followed_threads = (await GM.getValue(user.uid + '_followed_threads', []));
+                let followed_threads = GM_getValue(user.uid + '_followed_threads', []);
                 for (let thread of followed_threads) {
                     getUserNewestPostOrThread(user.uid, thread.tid, thread.last_tpid).then(new_infos => {
                         const new_threads = new_infos.new;
@@ -1190,7 +1190,7 @@
                         }
 
                         if (thread.last_tpid == 0 || new_threads.length == 0) {
-                            return;
+                            return notification_messages;
                         }
 
                         if (!popup) {
@@ -1354,6 +1354,7 @@
 // TODO 合并保存选项
 // TODO 用户改名提醒
 // TODO md格式
+// TODO 下载进度条
 // TODO 自动回复
 // TODO 上传表情
 // TODO 黑名单
