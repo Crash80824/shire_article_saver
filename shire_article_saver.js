@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4.2
+// @version      0.6.4.3
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -489,6 +489,12 @@
     async function saveFile(filename, text, attach = [], op = []) {
         const helper_setting = GM_getValue('helper_setting');
 
+        const something_to_save = helper_setting.enable_text_download || (helper_setting.enable_attach_download && attach.length > 0) || (helper_setting.enable_op_download && op.length > 0);
+        if (!something_to_save) {
+            alert('没有需要保存的内容, 请检查设置.');
+            return;
+        }
+
         if (helper_setting.enable_text_download) {
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
@@ -561,6 +567,7 @@
                 return getPageContent(page_doc, type);
             });
             let content_list = await Promise.all(promises);
+            console.log(content_list);
             content_list.sort((a, b) => a.page_id - b.page_id);
             text += content_list.map(e => e.text).join('');
             attach.push(...content_list.map(e => e.attach).flat());
@@ -1350,17 +1357,30 @@
 
 })();
 
-// TODO 弹窗样式美化
+// 最优先
+// TODO 打包下载
 // TODO 合并保存选项
-// TODO 用户改名提醒
-// TODO md格式
 // TODO 下载进度条
 // TODO 自动回复
-// TODO 上传表情
+// TODO 清除数据
+// TODO 保证弹窗弹出
+
+// 次优先
+// TODO 调试模式
+// TODO 弹窗样式美化
 // TODO 黑名单
 // TODO 一键删除
-// TODO 表情代码
-// TODO 清除数据
+
+// 末优先
+// TODO 用户改名提醒
 // TODO 辅助换行
+// TODO md格式
+// TODO 分割线样式
+
+// 不优先
+// TODO 上传表情
+// TODO 表情代码
 // TODO 置顶重复
+// TODO 无选中时会下载空文件
+
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
