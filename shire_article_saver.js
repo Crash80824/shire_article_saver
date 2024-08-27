@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4.4
+// @version      0.6.4.5
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -25,7 +25,7 @@
 (function () {
     'use strict';
 
-    const helper_default_setting = { 'enable_notification': true, 'enable_text_download': true, 'enable_attach_download': true, 'enable_op_download': true };
+    const helper_default_setting = { 'enable_notification': true, 'enable_history': true, 'enable_text_download': true, 'enable_attach_download': true, 'enable_op_download': true };
     if (typeof GM_getValue('helper_setting') === 'undefined') {
         GM_setValue('helper_setting', helper_default_setting);
     }
@@ -201,6 +201,7 @@
     // 更新GM Value的函数
     // ========================================================================================================
     function updateGMListElements(list, elem, status, equal = (a, b) => a == b) {
+        // 根据equal判断独立elem，根据status判断新list中是否有elem
         if (status && !list.some(e => equal(e, elem))) { // 存入元素
             list.push(elem);
         }
@@ -310,7 +311,7 @@
         const url = createURLInDomain(params);
         if (UA === null) {
             const response = await fetch(url);
-            const page_doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+            let page_doc = new DOMParser().parseFromString(await response.text(), 'text/html');
             page_doc.original_url = url;
             return page_doc;
         }
@@ -321,7 +322,8 @@
                     url: url,
                     headers: { 'User-Agent': UA },
                     onload: response => {
-                        const page_doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                        let page_doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                        page_doc.original_url = url;
                         resolve(page_doc);
                     }
                 });
@@ -624,6 +626,8 @@
     }
 
     async function getUserNewestReply(uid, last_pid = 0) {
+        // 返回用户空间回复页首页新于last_pid的回复，通过能否在首页查询到不晚于last_pid的回复判断是否可能有更多回复
+
         const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space', 'mobile': 2 };
         const followed_threads = GM_getValue(uid + '_followed_threads', []);
         const follow_tids = followed_threads.map(e => e.tid).filter(e => e > 0);
@@ -659,6 +663,8 @@
     }
 
     async function getUserNewestThread(uid, last_tid = 0) {
+        // 返回用户空间主题页首页新于last_tid的主题，通过能否在首页查询到不晚于last_tid的主题判断是否可能有更多主题
+
         const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid, 'do': 'thread', 'view': 'me', 'from': 'space', 'mobile': 2 };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const threads_in_page = qSA('li.list', page_doc);
@@ -683,6 +689,8 @@
     }
 
     async function getUserNewestPostInThread(uid, tid, last_pid = 0) {
+        // 返回关注主题只看该作者末页（large_page_num）新于last_pid的回复，通过能否在末页查询到不晚于last_pid的回复判断是否可能有更多回复
+
         const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': tid, 'authorid': uid, 'page': large_page_num, 'mobile': 2 };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const posts_in_page = getPostsInPage(page_doc);
@@ -881,7 +889,7 @@
                 continue;
             }
 
-            checkbox.addEventListener('change', () => { recordCheckbox(`${uid}_checked_threads`, checkbox.id, checkbox.checked) });// 每个用户设置一个数组，存入被选中的Thread的ID
+            checkbox.addEventListener('change', () => { recordCheckbox(`${uid}_checked_threads`, checkbox.id, checkbox.checked) });// 每个用户设置一个数组，存入被选中的thread的ID
         }
     }
 
@@ -907,7 +915,6 @@
 
     async function modifySpacePage() {
         let URL_info = location.href.parseURL();
-        console.log(URL_info);
         if (!Boolean(URL_info.type)) {
             URL_info.type = 'thread'
         }
@@ -1037,6 +1044,17 @@
         return div;
     }
 
+    function createDebugTable() {
+        const div = document.createElement('div');
+        const all_value = GM_listValues();
+        all_value.forEach(element => {
+            const p = document.createElement('p');
+            p.textContent = element + ':' + JSON.stringify(GM_getValue(element));
+            div.appendChild(p);
+        });
+        return div;
+    }
+
     function createHelperSettingCheckbox(text, checked, onchange) {
         const label = document.createElement('label');
         const checkbox = document.createElement('input');
@@ -1103,14 +1121,23 @@
                 GM.setValue('helper_setting', helper_setting);
             }));
 
+        // 开启历史消息
+        checkboxs.push(createHelperSettingCheckbox('历史消息', helper_setting.enable_history,
+            (e) => {
+                helper_setting.enable_history = e.target.checked;
+                GM.setValue('helper_setting', helper_setting);
+            }));
+
         // 清除历史消息
-        buttons.push(createHelperSettingButton('清空消息', () => {
-            const confirm = window.confirm('确定清空历史消息？');
-            if (confirm) {
-                GM.deleteValue('notification_messages');
-                location.reload();
-            }
-        }));
+        if (helper_setting.enable_history) {
+            buttons.push(createHelperSettingButton('清空消息', () => {
+                const confirm = window.confirm('确定清空历史消息？');
+                if (confirm) {
+                    GM.deleteValue('notification_messages');
+                    location.reload();
+                }
+            }));
+        }
         // 开启辅助换行
         // 开启黑名单
 
@@ -1128,20 +1155,12 @@
         const tab_container = document.createElement('div');
         tab_container.style = helper_setting_popup_tab_container_style;
 
-        const tabs = [{ 'name': '设置', 'func': createHelperSettingTable }, { 'name': '关注列表', 'func': createFollowListTable }, { 'name': '历史消息', 'func': createHistoryNotificationTable }];
+        const tabs = [{ 'name': '设置', 'func': createHelperSettingTable }, { 'name': '关注列表', 'func': createFollowListTable }];
+        if (helper_setting.enable_history) {
+            tabs.push({ 'name': '历史消息', 'func': createHistoryNotificationTable });
+        }
         if (helper_setting.enable_debug_mode) {
-            tabs.push({
-                'name': '调试', 'func': () => {
-                    const div = document.createElement('div');
-                    const all_value = GM_listValues();
-                    all_value.forEach(element => {
-                        const p = document.createElement('p');
-                        p.textContent = element + ':' + JSON.stringify(GM_getValue(element));
-                        div.appendChild(p);
-                    });
-                    return div;
-                }
-            });
+            tabs.push({ 'name': '调试', 'func': createDebugTable });
         }
 
         const tab_buttons = tabs.map((tab, index) => {
@@ -1210,7 +1229,7 @@
                             updateGMList(user.uid + '_followed_threads', followed_threads);
                         }
 
-                        if (thread.last_tpid == 0 || new_threads.length == 0) {
+                        if (thread.last_tpid == 0 || new_threads.length == 0) { // 如果没有更新，或者是首次关注，则不发送消息
                             return notification_messages;
                         }
 
@@ -1234,8 +1253,8 @@
                                 const thread_title = new_thread.title;
                                 const messageElement = createParaAndInsertUserNameLink(user.uid, div);
                                 let message = ` 有`;
-                                if (!found_last && thread.tid != -1) {
-                                    message += '超过';
+                                if (!found_last && thread.tid != -1) { // 在特定关注主题末页未找到不晚于last_pid的
+                                    message += '至少';
                                 }
                                 message += `${new_thread.reply_num}条新回复在 `;
                                 const text_element = document.createTextNode(message);
@@ -1243,9 +1262,9 @@
                                 const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_thread.tid, 'page': large_page_num };
                                 insertLink(thread_title, thread_URL_params, messageElement, 10);
                             }
-                            if (!found_last && thread.tid == -1) {
+                            if (!found_last && thread.tid == -1) { // 在空间回复页首页未找到不晚于last_pid的
                                 const messageElement = createParaAndInsertUserNameLink(user.uid, div);
-                                const text_element2 = document.createTextNode(' 有 ');
+                                const text_element2 = document.createTextNode(' 或有 ');
                                 messageElement.appendChild(text_element2);
                                 const reply_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
                                 insertLink('更多新回复', reply_URL_params, messageElement);
@@ -1264,7 +1283,7 @@
                                 const messageElement = createParaAndInsertUserNameLink(user.uid, div);
                                 let message = ` 有另外 `;
                                 if (!found_last) {
-                                    message += '超过';
+                                    message += '至少';
                                 }
                                 const text_element = document.createTextNode(message);
                                 messageElement.appendChild(text_element);
@@ -1372,29 +1391,34 @@
 })();
 
 // 最优先
-// TODO 打包下载
+// TODO 打包下载及选项
 // TODO 合并保存选项
 // TODO 下载进度条
 // TODO 自动回复
 // TODO 清除数据
 // TODO 删除键值
+// TODO 回复提醒定位
 // TODO 保证弹窗弹出
+// TODO 历史消息开关
 
 // 次优先
 // TODO 弹窗样式美化
+// TODO 弹窗字体颜色
 // TODO 黑名单
 // TODO 一键删除
+// TODO 跳过题图
 
 // 末优先
 // TODO 用户改名提醒
 // TODO 辅助换行
 // TODO md格式
 // TODO 分割线样式
+// TODO NSFW
 
 // 不优先
 // TODO 上传表情
 // TODO 表情代码
 // TODO 置顶重复
 // TODO 无选中时会下载空文件
-
+// TODO 特关重复提醒
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
