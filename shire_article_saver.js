@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4
+// @version      0.6.4.1
 // @description  Download shire thread content.
 // @author       Crash
 // @match        https://www.shireyishunjian.com/main/*
@@ -17,6 +17,7 @@
 // @grant        GM.listValues
 // @grant        GM_listValues
 // @grant        GM_xmlhttpRequest
+// @grant        GM.download
 // @downloadURL https://update.greasyfork.org/scripts/461311/shire%20helper.user.js
 // @updateURL https://update.greasyfork.org/scripts/461311/shire%20helper.meta.js
 // ==/UserScript==
@@ -24,7 +25,7 @@
 (function () {
     'use strict';
 
-    const helper_default_setting = { 'enable_notification': true, 'enable_attach_download': true, 'enable_op_download': true };
+    const helper_default_setting = { 'enable_notification': true, 'enable_text_download': true, 'enable_attach_download': true, 'enable_op_download': true };
     if (typeof GM_getValue('helper_setting') === 'undefined') {
         GM_setValue('helper_setting', helper_default_setting);
     }
@@ -35,6 +36,26 @@
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
     const large_page_num = 1024;
     const magic_num = Math.sqrt(large_page_num);
+
+    const extensionMap = {
+        'image/jpeg': 'jpg',
+        'image/bmp': 'bmp',
+        'image/png': 'png',
+        'image/gif': 'gif',
+        'image/webp': 'webp',
+        'video/mp4': 'mp4',
+        'video/x-msvideo': 'avi',
+        'video/x-matroska': 'mkv',
+        'video/x-flv': 'flv',
+        'video/mpeg': 'mpg',
+        'video/quicktime': 'mov',
+        'audio/mp3': 'mp3',
+        'audio/mpeg': 'mp3',
+        'audio/wav': 'wav',
+        'audio/wave': 'wav',
+        'audio/x-wav': 'wav',
+        'text/plain': 'txt'
+    };
 
     const qS = (selector, parent = document) => parent.querySelector(selector);
     const qSA = (selector, parent = document) => parent.querySelectorAll(selector);
@@ -61,7 +82,12 @@
         })());
     });
     const startWithChinese = str => /^[\p{Script=Han}]/u.test(str);
-    const removeExtension = str => str.replace(/\.(png|jpg|jpeg|mp3|mp4|mkv|avi)$/i, '');
+    const extractFileAndExt = str => {
+        const exts = Array.from(extensionMap.values()).join('|');
+        const regex = new RegExp(`([^\\/]+)\\.(${exts})$`, 'i');
+        const match = str.match(regex);
+        return match ? [match[1], match[2]] : [str, ''];
+    };
 
 
     const checkVariableDefined = (variable_name, timeout = 15000, time_interval = 100) => new Promise((resolve, reject) => {
@@ -359,7 +385,7 @@
             for (let i = 0; i < image_list.length; i++) {
                 const img = image_list[i];
                 const img_url = img.getAttribute('zoomfile');
-                let img_title = removeExtension(img.title)
+                let img_title = img.title
                 if (!startWithChinese(img_title)) {
                     img_title = '';
                 }
@@ -369,15 +395,17 @@
         }
 
         let op_body = qS('[id^="op-"][id$="-body"]', post);
-        let op_urls = [];
+        let ops = [];
         if (op_body) {
             const url_list = qSA('a', op_body);
-            for (let url of url_list) {
-                op_urls.push({ 'url': url.href, 'title': removeExtension(url.textContent) });
+            if (url_list.length > 0) {
+                for (let url of url_list) {
+                    ops.push({ 'url': url.href, 'title': url.textContent });
+                }
             }
         }
 
-        return { 'text': text, 'attach': attachments, 'op': op_urls };
+        return { 'text': text, 'attach': attachments, 'op': ops };
     }
 
     async function getPageContent(page_doc, type = 'main') {
@@ -429,50 +457,60 @@
     // ========================================================================================================
     // 保存与下载的函数
     // ========================================================================================================
-    async function saveFile(filename, text, attach = [], op = []) {
-        // const buffer = new TextEncoder().encode(text).buffer;
-        // const blob = new Blob([buffer], { type: 'text/plain;base64' });
-        // const reader = new FileReader();
-        // reader.readAsDataURL(blob);
-        // reader.onload = e => {
-        //     const a = document.createElement('a');
-        //     a.download = filename + '.txt';
-        //     a.href = e.target.result;
-        //     a.click();
-        // };
+    async function downloadFromURL(target, prefix = filename + '_') {
+        const url = target.url;
+        const title = target.title;
+        GM_xmlhttpRequest({
+            method: 'HEAD',
+            url: url,
+            responseType: 'blob',
+            onload: response => {
+                const content_type = response.responseHeaders.match(/Content-Type: (.+)/i);
+                let ext = 'unknown';
+                if (content_type && content_type[1]) {
+                    ext = extensionMap[content_type[1]] || 'unknown';
+                }
 
-        const downloadFromURLs = (url_list, prefix = filename + '_') => {
-            for (let i = 0; i < url_list.length; i++) {
-                const url = url_list[i].url;
-                const title = url_list[i].title || `${i + 1}`;
-                GM.xmlhttpRequest({
-                    method: 'GET',
-                    url: url,
-                    responseType: 'blob',
-                    onload: response => {
-                        const type = response.responseHeaders.match(/Content-Type:\s*([\w\/-]+)/i)[1].split('/')[1]
-                        const blob = response.response;
-                        const reader = new FileReader();
-                        reader.readAsDataURL(blob);
-                        reader.onload = e => {
-                            const a = document.createElement('a');
-                            a.download = `${prefix}${title}.${type}`;
-                            a.href = e.target.result;
-                            a.click();
-                        };
-                    }
-                });
+                if (ext == 'unknown') {
+                    [title, ext] = extractFileAndExt(title);
+                }
+
+                if (ext != 'unknown') {
+                    GM.download({
+                        saveAs: false,
+                        url: url,
+                        name: `${prefix}${title}.${ext}`
+                    });
+                }
             }
-        };
+        });
+    }
 
+    async function saveFile(filename, text, attach = [], op = []) {
         const helper_setting = GM_getValue('helper_setting');
+
+        if (helper_setting.enable_text_download) {
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            GM.download({
+                url: url,
+                name: filename + '.txt',
+                onloaded: () => {
+                    URL.revokeObjectURL(url);
+                },
+                onerror: () => {
+                    URL.revokeObjectURL(url);
+                }
+            });
+        }
+
         if (helper_setting.enable_attach_download) {
-            attach.forEach(e => e.url = location.origin + '/main/' + e.url);
-            downloadFromURLs(attach, filename + '_附');
+            attach.forEach((e, i) => { e.url = location.origin + '/main/' + e.url; e.title = e.title || `${i + 1}` });
+            attach.forEach(e => downloadFromURL(e, filename + '_附'));
         }
 
         if (helper_setting.enable_op_download) {
-            downloadFromURLs(op.slice(0, 1), '');
+            op.forEach(e => downloadFromURL(e, ''));
         }
     }
 
@@ -1018,10 +1056,10 @@
         let checkboxs = [];
         let buttons = []
 
-        // 开启更新通知
-        checkboxs.push(createHelperSettingCheckbox('更新通知', helper_setting.enable_notification,
+        // 开启文本下载
+        checkboxs.push(createHelperSettingCheckbox('文本下载', helper_setting.enable_text_download,
             (e) => {
-                helper_setting.enable_notification = e.target.checked;
+                helper_setting.enable_text_download = e.target.checked;
                 GM.setValue('helper_setting', helper_setting);
             }));
 
@@ -1033,9 +1071,16 @@
             }));
 
         // 开启原创保护资源下载
-        checkboxs.push(createHelperSettingCheckbox('原创保护资源下载', helper_setting.enable_op_download,
+        checkboxs.push(createHelperSettingCheckbox('资源下载', helper_setting.enable_op_download,
             (e) => {
                 helper_setting.enable_op_download = e.target.checked;
+                GM.setValue('helper_setting', helper_setting);
+            }));
+
+        // 开启更新通知
+        checkboxs.push(createHelperSettingCheckbox('更新通知', helper_setting.enable_notification,
+            (e) => {
+                helper_setting.enable_notification = e.target.checked;
                 GM.setValue('helper_setting', helper_setting);
             }));
 
@@ -1308,6 +1353,7 @@
 // TODO 弹窗样式美化
 // TODO 合并保存选项
 // TODO 用户改名提醒
+// TODO md格式
 // TODO 自动回复
 // TODO 上传表情
 // TODO 黑名单
