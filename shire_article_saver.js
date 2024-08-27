@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4.7
+// @version      0.6.4.8
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1051,6 +1051,33 @@
         return div;
     }
 
+    function createHelperSettingSelect(text, attr, options = []) {
+        const status = helper_setting[attr];
+        if (options.length == 0) {
+            options = [status];
+        }
+
+        const label = document.createElement('label');
+        label.textContent = text;
+        label.setAttribute('for', 'dynamicSelect');
+
+        const select = document.createElement('select');
+
+        options.forEach(option => {
+            const opt = document.createElement('option');
+            opt.value = option;
+            opt.textContent = option;
+            if (option == status) {
+                opt.selected = true;
+            }
+            select.appendChild(opt);
+        });
+
+        label.appendChild(select);
+
+        return label;
+    }
+
     function createHelperSettingCheckbox(text, attr) {
         const label = document.createElement('label');
         const checkbox = document.createElement('input');
@@ -1118,6 +1145,14 @@
                 }
             }));
         }
+
+        buttons.push(createHelperSettingButton('清空数据', () => {
+            const confirm = window.confirm('确定清空所有数据？');
+            if (confirm) {
+                GM_listValues().forEach(e => GM.deleteValue(e));
+                location.reload();
+            }
+        }));
         // 开启辅助换行
         // 开启黑名单
 
@@ -1373,13 +1408,14 @@
 })();
 
 // 最优先
-// TODO 打包下载及选项
+// DOING 打包下载及选项 !! 正在做下拉框
 // TODO 合并保存选项
 // TODO 下载进度条
 // TODO 自动回复
-// TODO 清除数据
 // TODO 删除键值
 // TODO 保证弹窗弹出
+// TODO 站务着色
+// TODO 版面浮动名片添加关注
 
 // 次优先
 // TODO 弹窗样式美化
