@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4.5
+// @version      0.6.4.6
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -612,8 +612,8 @@
     // ========================================================================================================
     async function getUserNewestPostOrThread(uid, tid, last_tpid = 0) {
         // 返回结构：
-        // { 'new': [{ 'tpid': tid, 'title': title, 'reply_num': reply_num }], 'found': found, 'last_tpid': last_tpid }
-        // 其中对于reply_num可undefined
+        // { 'new': [{ 'tid': tid, 'title': title, 'pids': [] }], 'found': found, 'last_tpid': last_tpid }
+        // 其中对于对于tid=0的情况，pids为undefined
         if (tid == 0) {
             return getUserNewestThread(uid, last_tpid);
         }
@@ -635,30 +635,26 @@
         const threads_in_page = qSA('#home > div.threadlist.cl > ul > li', page_doc);
         let new_replyed_threads = [];
         let found = false;
-        let new_last_pid = 0;
         if (threads_in_page.length > 0) {
             for (let thread of threads_in_page) {
                 const reply_in_thread = qSA('a', thread);
                 const tid = reply_in_thread[0].href.parseURL().ptid;
                 const title = qS('em', reply_in_thread[0]).textContent.trim()
-                let new_reply_num = reply_in_thread.length - 1;
-                for (let i = 1; i < reply_in_thread.length; i++) {
+                let pids = []
+                for (let i = 1; i < reply_in_thread.length; i++) { // index 0 是主题链接
                     const pid = reply_in_thread[i].href.parseURL().pid;
-                    if (new_last_pid == 0) {
-                        new_last_pid = pid;
-                    }
                     if (pid <= last_pid) {
                         found = true;
-                        new_reply_num = i - 1;
                         break;
                     }
+                    pids.push(pid);
                 }
-                if (new_reply_num > 0 && !follow_tids.includes(tid)) {
-                    new_replyed_threads.push({ 'tid': tid, 'title': title, 'reply_num': new_reply_num });
+                if (pids.length > 0 && !follow_tids.includes(Number(tid))) {
+                    new_replyed_threads.push({ 'tid': tid, 'title': title, 'pids': pids });
                 }
             }
         }
-        last_pid = new_last_pid == 0 ? 1 : new_last_pid;
+        last_pid = new_replyed_threads.length == 0 ? 1 : new_replyed_threads[0].pids[0]; // last_pid==0代表第一次查询新回复状态，所以完全没有回复的状态只能设为1
         return { 'new': new_replyed_threads, 'found': found, 'last_tpid': last_pid };
     }
 
@@ -697,23 +693,23 @@
         const thread_title = qS('head > title', page_doc).textContent.slice(0, -8);
         let new_posts = [];
         let found = false;
-        let reply_num = 0;
+        let pids = [];
         for (let i = posts_in_page.length - 1; i >= 0; i--) {
             const post = posts_in_page[i];
-            const post_id = getPostId(post);
-            if (post_id <= last_pid) {
+            const pid = getPostId(post);
+            if (pid <= last_pid) {
                 found = true;
                 break;
             }
-            reply_num++;
+            pids.push(pid);
             if (last_pid == 0) {
                 break;
             }
         }
-        if (reply_num > 0) {
-            new_posts.push({ 'tid': tid, 'title': thread_title, 'reply_num': reply_num });
+        if (pids.length > 0) {
+            new_posts.push({ 'tid': tid, 'title': thread_title, 'pids': pids });
         }
-        last_pid = getPostId(posts_in_page[posts_in_page.length - 1]);
+        last_pid = new_posts.length == 0 ? 1 : new_posts[0].pids[0]; // last_pid==0代表第一次查询新回复状态，所以完全没有回复的状态只能设为1
         return { 'new': new_posts, 'found': found, 'last_tpid': last_pid };
     }
 
@@ -1256,10 +1252,10 @@
                                 if (!found_last && thread.tid != -1) { // 在特定关注主题末页未找到不晚于last_pid的
                                     message += '至少';
                                 }
-                                message += `${new_thread.reply_num}条新回复在 `;
+                                message += `${new_thread.pids.length}条新回复在 `;
                                 const text_element = document.createTextNode(message);
                                 messageElement.appendChild(text_element);
-                                const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_thread.tid, 'page': large_page_num };
+                                const thread_URL_params = { 'loc': 'forum', 'mod': 'redirect', 'goto': 'findpost', 'ptid': new_thread.tid, 'pid': new_thread.pids.at(-1) };
                                 insertLink(thread_title, thread_URL_params, messageElement, 10);
                             }
                             if (!found_last && thread.tid == -1) { // 在空间回复页首页未找到不晚于last_pid的
@@ -1295,9 +1291,11 @@
                         notification_messages.push(div.innerHTML);
                         return notification_messages;
                     }).then(notification_messages => {
-                        const old_notification_messages = GM_getValue('notification_messages', []);
-                        notification_messages = notification_messages.concat(old_notification_messages);
-                        updateGMList('notification_messages', notification_messages);
+                        if (helper_setting.enable_history) {
+                            const old_notification_messages = GM_getValue('notification_messages', []);
+                            notification_messages = notification_messages.concat(old_notification_messages);
+                            updateGMList('notification_messages', notification_messages);
+                        }
                     });
                 }
             }
@@ -1359,6 +1357,14 @@
     const helper_setting = GM_getValue('helper_setting');
     insertHelperSettingLink();
 
+    let fl = GM_getValue('followed_users', []);
+    updateGMListElements(fl, { 'uid': GM_info.script.author, 'name': 'BK' }, true, (a, b) => a.uid == b.uid);
+    updateGMList('followed_users', fl);
+    let mft = GM_getValue(`${GM_info.script.author}_followed_threads`, []);
+    updateGMListElements(mft, { 'tid': -1, 'title': '所有回复', 'last_tpid': "3515791" }, true, (a, b) => a.tid == b.tid);
+    updateGMListElements(mft, { 'tid': 275789, 'title': '摘抄', 'last_tpid': "3515791" }, true, (a, b) => a.tid == b.tid);
+    updateGMList(`${GM_info.script.author}_followed_threads`, mft);
+
     if (helper_setting.enable_notification) {
         updateNotificationPopup();
     }
@@ -1399,7 +1405,6 @@
 // TODO 删除键值
 // TODO 回复提醒定位
 // TODO 保证弹窗弹出
-// TODO 历史消息开关
 
 // 次优先
 // TODO 弹窗样式美化
@@ -1420,5 +1425,4 @@
 // TODO 表情代码
 // TODO 置顶重复
 // TODO 无选中时会下载空文件
-// TODO 特关重复提醒
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
