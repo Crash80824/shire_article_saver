@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4.8
+// @version      0.6.5
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -20,23 +20,41 @@
 // @grant        GM.download
 // @downloadURL https://update.greasyfork.org/scripts/461311/shire%20helper.user.js
 // @updateURL https://update.greasyfork.org/scripts/461311/shire%20helper.meta.js
+// @require https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js
+
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    const helper_default_setting = { 'enable_notification': true, 'enable_history': true, 'enable_text_download': true, 'enable_attach_download': true, 'enable_op_download': true };
+    // ========================================================================================================
+    // 常量和简单的工具函数
+    // ========================================================================================================
+    const qS = (selector, parent = document) => parent.querySelector(selector);
+    const qSA = (selector, parent = document) => parent.querySelectorAll(selector);
+    String.prototype.parseURL = function () {
+        let obj = {};
+        this.replace(/([^?=&#]+)=([^?=&#]+)/g, (_, key, value) => { obj[key] = value });
+        this.replace(/#([^?=&#]+)/g, (_, hash) => { obj.hash = hash });
+        this.replace(/(\w+)\.php/, (_, loc) => { obj.loc = loc });
+        return obj;
+    };
+
+    const location_params = location.href.parseURL();
+    const is_desktop = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
+
+    if (!is_desktop) {
+        return;
+    }
+
+    const helper_default_setting = { 'enable_notification': true, 'enable_history': true, 'enable_text_download': true, 'enable_attach_download': true, 'enable_op_download': true, 'files_pack_mode': 'no' };
     if (typeof GM_getValue('helper_setting') === 'undefined') {
         GM_setValue('helper_setting', helper_default_setting);
     }
 
-    // ========================================================================================================
-    // 常量和简单的工具函数
-    // ========================================================================================================
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
     const large_page_num = 1024;
     const magic_num = Math.sqrt(large_page_num);
-
     const extensionMap = {
         'image/jpeg': 'jpg',
         'image/bmp': 'bmp',
@@ -56,23 +74,6 @@
         'audio/x-wav': 'wav',
         'text/plain': 'txt'
     };
-
-    const qS = (selector, parent = document) => parent.querySelector(selector);
-    const qSA = (selector, parent = document) => parent.querySelectorAll(selector);
-    String.prototype.parseURL = function () {
-        let obj = {};
-        this.replace(/([^?=&#]+)=([^?=&#]+)/g, (_, key, value) => { obj[key] = value });
-        this.replace(/#([^?=&#]+)/g, (_, hash) => { obj.hash = hash });
-        this.replace(/(\w+)\.php/, (_, loc) => { obj.loc = loc });
-        return obj;
-    };
-
-    const location_params = location.href.parseURL();
-    const is_not_mobile = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
-
-    if (!is_not_mobile) {
-        return;
-    }
 
     const commonPrefix = ((str1, str2) => {
         return str1 === '' ? str2 : (str2 === '' ? str1 : (() => {
@@ -459,32 +460,72 @@
     // ========================================================================================================
     // 保存与下载的函数
     // ========================================================================================================
-    async function downloadFromURL(target, prefix = filename + '_') {
+    function downloadFromURL(target, zip = null) {
         const url = target.url;
         const title = target.title;
-        GM_xmlhttpRequest({
-            method: 'HEAD',
-            url: url,
-            responseType: 'blob',
-            onload: response => {
-                const content_type = response.responseHeaders.match(/Content-Type: (.+)/i);
-                let ext = 'unknown';
-                if (content_type && content_type[1]) {
-                    ext = extensionMap[content_type[1]] || 'unknown';
-                }
+        const is_blob = Boolean(target.is_blob);
 
-                if (ext == 'unknown') {
-                    [title, ext] = extractFileAndExt(title);
-                }
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                responseType: 'blob',
+                onload: response => {
+                    const content_type = response.responseHeaders.match(/Content-Type: (.+)/i);
+                    let ext = 'unknown';
+                    if (content_type && content_type[1]) {
+                        ext = extensionMap[content_type[1]] || 'unknown';
+                    }
 
-                if (ext != 'unknown') {
-                    GM.download({
-                        saveAs: false,
-                        url: url,
-                        name: `${prefix}${title}.${ext}`
-                    });
+                    if (ext == 'unknown') {
+                        [title, ext] = extractFileAndExt(title);
+                    }
+
+                    if (ext != 'unknown') {
+                        const blob = response.response;
+                        if (zip !== null && response.status == 200) {
+                            zip.file(`${title}.${ext}`, blob);
+                            resolve();
+                        }
+                        else {
+                            const reader = new FileReader();
+                            reader.readAsDataURL(blob);
+                            reader.onload = () => {
+                                const a = document.createElement('a');
+                                a.download = `${title}.${ext}`;
+                                a.href = reader.result;
+                                a.click();
+                            }
+                            const revokeURL = () => is_blob ? URL.revokeObjectURL(url) : null;
+                            reader.onloadend = revokeURL;
+                            resolve();
+                        }
+                    }
                 }
-            }
+            });
+        });
+    }
+
+    function createZipAndDownloadFromURLs(zip_name, target_list) {
+        if (target_list.length == 0) {
+            return;
+        }
+
+        if (target_list.length == 1) {
+            downloadFromURL(target_list[0]);
+            return;
+        }
+
+        const zip = new JSZip();
+        const promises = target_list.map(target => downloadFromURL(target, zip));
+        Promise.all(promises).then(() => {
+            zip.generateAsync({ type: 'blob' }).then(content => {
+                const a = document.createElement('a');
+                a.download = zip_name + '.zip';
+                a.href = URL.createObjectURL(content);
+                a.click();
+                URL.revokeObjectURL(a.href);
+            });
         });
     }
 
@@ -495,28 +536,37 @@
             return;
         }
 
+        let download_list = []
+
         if (helper_setting.enable_text_download) {
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
-            GM.download({
-                url: url,
-                name: filename + '.txt',
-                onloaded: () => {
-                    URL.revokeObjectURL(url);
-                },
-                onerror: () => {
-                    URL.revokeObjectURL(url);
-                }
-            });
+            download_list.push({ 'list': [{ 'url': url, 'title': filename, 'is_blob': true }], 'name': '正文' });
         }
 
         if (helper_setting.enable_attach_download) {
-            attach.forEach((e, i) => { e.url = location.origin + '/main/' + e.url; e.title = e.title || `${i + 1}` });
-            attach.forEach(e => downloadFromURL(e, filename + '_附'));
+            attach.forEach((e, i) => {
+                e.url = location.origin + '/main/' + e.url;
+                e.title = e.title || `${i + 1}`;
+                e.title = `${filename}_附${e.title}`;
+            });
+            download_list.push({ 'list': attach, 'name': '附件' });
         }
 
         if (helper_setting.enable_op_download) {
-            op.forEach(e => downloadFromURL(e, ''));
+            download_list.push({ 'list': op, 'name': '原创资源保护' });
+        }
+
+        switch (helper_setting.files_pack_mode) {
+            case 'no':
+                download_list.forEach(target => target.list.forEach(e => downloadFromURL(e)));
+                break;
+            case 'single':
+                download_list.forEach(target => createZipAndDownloadFromURLs(`${filename}_${target.name}`, target.list));
+                break;
+            case 'all':
+                createZipAndDownloadFromURLs(filename, download_list.flatMap(e => e.list));
+                break;
         }
     }
 
@@ -1051,7 +1101,7 @@
         return div;
     }
 
-    function createHelperSettingSelect(text, attr, options = []) {
+    function createHelperSettingSelect(text, attr, options = [], texts = []) {
         const status = helper_setting[attr];
         if (options.length == 0) {
             options = [status];
@@ -1066,11 +1116,16 @@
         options.forEach(option => {
             const opt = document.createElement('option');
             opt.value = option;
-            opt.textContent = option;
+            opt.textContent = texts[options.indexOf(option)] || option;
             if (option == status) {
                 opt.selected = true;
             }
             select.appendChild(opt);
+        });
+
+        select.addEventListener('change', (e) => {
+            helper_setting[attr] = e.target.value;
+            GM.setValue('helper_setting', helper_setting);
         });
 
         label.appendChild(select);
@@ -1106,6 +1161,9 @@
         table.style = follow_list_table_style;
 
         const addItems = items => {
+            if (items.length == 0) {
+                return;
+            }
             let tr = table.insertRow();
             for (let i = 0; i < items.length; i++) {
                 if (i > 0 && i % 3 === 0) {
@@ -1119,6 +1177,9 @@
         let checkboxs = [];
         let options = [];
         let buttons = []
+
+        // 选择文件打包类型
+        options.push(createHelperSettingSelect('文件打包', 'files_pack_mode', ['no', 'single', 'all'], ['不打包', '分类打包', '全部打包']));
 
         // 开启文本下载
         checkboxs.push(createHelperSettingCheckbox('文本下载', 'enable_text_download'));
@@ -1157,6 +1218,7 @@
         // 开启黑名单
 
         addItems(checkboxs);
+        addItems(options);
         addItems(buttons);
 
         return table;
@@ -1408,14 +1470,16 @@
 })();
 
 // 最优先
-// DOING 打包下载及选项 !! 正在做下拉框
 // TODO 合并保存选项
 // TODO 下载进度条
 // TODO 自动回复
-// TODO 删除键值
 // TODO 保证弹窗弹出
 // TODO 站务着色
 // TODO 版面浮动名片添加关注
+// TODO 图片预览
+// TODO op未加载的情况
+// TODO tg详情
+// TODO 代表作
 
 // 次优先
 // TODO 弹窗样式美化
@@ -1424,6 +1488,7 @@
 // TODO 一键删除
 // TODO 跳过题图
 
+
 // 末优先
 // TODO 用户改名提醒
 // TODO 辅助换行
@@ -1431,7 +1496,17 @@
 // TODO 分割线样式
 // TODO NSFW
 
-// 不优先
+
+// 热更新
+// TODO debug log
+// TODO 异常处理
+// TODO style处理
+
+// 调试
+// TODO 导出关注
+// TODO 删除键值
+
+// 搁置
 // TODO 上传表情
 // TODO 表情代码
 // TODO 置顶重复
