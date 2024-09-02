@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6.3
+// @version      0.6.6.4
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -433,7 +433,7 @@ label:has(.helper-toggle-switch)
 
 .helper-follow-button, .helper-followed-button {
   margin: 5px;
-  padding: 5px;
+  padding: 2px;
   width: 6rem;
   cursor: pointer;
   border: none;
@@ -457,7 +457,43 @@ background-color: #8491a5;
 .helper-followed-button:hover {
 background-color: #758195;
 }
-  
+
+.helper-checkbox {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border: 1px solid black;
+  background-color: transparent;
+  display: inline-block;
+  position: relative;
+  margin-right: 5px;
+  cursor: pointer;
+}
+
+.helper-checkbox:before {
+  content: "";
+  background-color: black;
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  width: 5px;
+  height: 5px;
+  transition: all 0.1s ease-in-out;
+}
+
+.helper-checkbox:checked:before {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.helper-checkbox-label {
+  color: black;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+}
     `);
 
 
@@ -1118,6 +1154,7 @@ background-color: #758195;
         const follow_btn = docre('button');
         const follow_status = GM_getValue(info.uid + '_followed_threads', []);
         const followed = follow_status.some(e => e.tid == info.tid);
+        follow_btn.type = 'button';
         follow_btn.className = followed ? 'helper-followed-button' : 'helper-follow-button';
         follow_btn.textContent = followed ? followed_text : follow_text;
 
@@ -1129,7 +1166,8 @@ background-color: #758195;
             }
             const follow_status = GM_getValue(info.uid + '_followed_threads', []);
             const followed = follow_status.some(e => e.tid == info.tid);
-            follow_btn.className = !followed ? 'helper-followed-button' : 'helper-follow-button';
+            follow_btn.classList.remove(followed ? 'helper-followed-button' : 'helper-follow-button');
+            follow_btn.classList.add(!followed ? 'helper-followed-button' : 'helper-follow-button');
             follow_btn.textContent = !followed ? followed_text : follow_text;
             recordFollow(info, !followed);
             if (info.tid == -1 && !followed) { // 特关同时也关注主题
@@ -1164,24 +1202,28 @@ background-color: #758195;
             const uid = post_info.post_auth_id;
 
             const label = docre('label');
-            const label_text = document.createTextNode('保存本层');
-            label.className = 'x1 xl2 o cl';
-            label.appendChild(label_text);
             qS('tbody > tr:nth-child(1) > td.pls > div', post).appendChild(label);
 
             const checkbox = docre('input');
             checkbox.id = 'post_check_' + pid;
+            checkbox.className = 'helper-checkbox';
             checkbox.type = 'checkbox';
             checkbox.checked = checked_posts.includes(pid);
             checkbox.addEventListener('change', () => { recordCheckbox(`${tid}_checked_posts`, checkbox.id, checkbox.checked) });// 每个Thread设置一个数组，存入被选中的Post的ID
             label.appendChild(checkbox);
 
+            const label_text = document.createTextNode('保存本层');
+            label.className = 'helper-checkbox-label o';
+            label.appendChild(label_text);
+
             all_checked = all_checked && checkbox.checked;
 
             const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
             profile_icon.appendChild(createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': 0 }));
-            const user_level = qS('[id^=favatar] > p:nth-child(5)', post)
-            user_level.appendChild(createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': tid, 'title': thread_title }));
+            const user_message = qS('[id^=favatar] > ul.xl', post)
+            const post_follow_btn = createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': tid, 'title': thread_title });
+            post_follow_btn.classList.add('o');
+            insertElement(post_follow_btn, user_message, 'insertAfter');
         }
 
         const label = docre('label');
@@ -1370,7 +1412,7 @@ background-color: #758195;
         }
 
         const select = docre('select');
-        select.classList.add('helper-select', 'helper-active-component');
+        select.className = 'helper-select helper-active-component';
         options.forEach(option => {
             const opt = docre('option');
             opt.value = option;
@@ -1402,7 +1444,7 @@ background-color: #758195;
         label.appendChild(checkbox);
 
         const span = docre('span');
-        span.classList.add('helper-toggle-switch', 'helper-halfheight-active-component');
+        span.className = 'helper-toggle-switch helper-halfheight-active-component';
         label.appendChild(span);
 
         return label;
@@ -1410,7 +1452,7 @@ background-color: #758195;
 
     function createHelperSettingMultiCheck(multichecks) {
         const container = docre('div');
-        container.classList.add('helper-multicheck-container', 'helper-active-component');
+        container.className = 'helper-multicheck-container helper-active-component';
 
         multichecks.forEach(option => {
             const item = docre('div');
@@ -1443,7 +1485,7 @@ background-color: #758195;
     function createHelperSettingButton(btn_text, onclick) {
         const btn = docre('button');
         btn.type = 'button';
-        btn.classList.add('helper-setting-button', 'helper-active-component');
+        btn.className = 'helper-setting-button helper-active-component';
         btn.textContent = btn_text;
         btn.addEventListener('click', onclick);
 
@@ -1621,6 +1663,7 @@ background-color: #758195;
         document.body.appendChild(popup);
 
         const close_btn = docre('button');
+        close_btn.type = 'button';
         close_btn.className = 'close-btn';
         close_btn.style = nofication_popup_close_btn_style;
         close_btn.onclick = () => { popup.style.display = 'none' };
@@ -1637,7 +1680,6 @@ background-color: #758195;
             for (let user of followed_users) {
                 let followed_threads = GM_getValue(user.uid + '_followed_threads', []);
                 for (let thread of followed_threads) {
-                    console.log('thread', thread);
                     promises.push(getUserNewestPostOrThread(user.uid, thread.tid, thread.last_tpid).then(new_infos => {
                         const new_threads = new_infos.new;
                         const found_last = new_infos.found;
@@ -1850,20 +1892,18 @@ background-color: #758195;
 // TODO debug log
 // TODO 异常处理
 // TODO style处理
-// TODO 关注列表样式
-// TODO 弹窗热更新
-// TODO button type
 
 // 调试
 // TODO 导出关注
 // TODO 删除键值
 
 // 美化
-// TODO 弹窗样式美化
-// TODO 弹窗字体颜色
+// TODO 关注列表样式
+// TODO noti弹窗样式美化
+// TODO set弹窗content样式
 // TODO 关闭按钮居中
 
-//优化
+// 优化
 // insertHelperLink
 // checked_posts
 
