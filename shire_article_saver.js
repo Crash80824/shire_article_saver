@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6.2
+// @version      0.6.6.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -412,7 +412,7 @@ label:has(.helper-toggle-switch)
   white-space: nowrap;
 }
 
-.helper-button {
+.helper-setting-button {
   padding: 0 20px;
   background-color: inherit;
   color: inherit;
@@ -431,6 +431,33 @@ label:has(.helper-toggle-switch)
   text-align: center;
 }
 
+.helper-follow-button, .helper-followed-button {
+  margin: 5px;
+  padding: 5px;
+  width: 6rem;
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  transition: background-color 0.3s ease;
+}
+
+.helper-follow-button {
+    background-color: #1772f6;
+}
+
+.helper-follow-button:hover {
+background-color: #0063e6;
+    }
+
+.helper-followed-button {
+background-color: #8491a5;
+}
+
+.helper-followed-button:hover {
+background-color: #758195;
+}
+  
     `);
 
 
@@ -1062,45 +1089,65 @@ label:has(.helper-toggle-switch)
     }
 
     function createFollowButton(info) {
-        let unfollowed_text;
+        // info: { 'uid': uid, 'name': name, 'tid': tid, 'title': title }
+        let follow_text;
         let followed_text;
+        let unfollow_text;
         switch (info.tid) {
             case -1: {
-                unfollowed_text = '特别关注';
-                followed_text = '取消特关';
+                follow_text = '特别关注';
+                followed_text = '已特关';
+                unfollow_text = '取消特关';
                 info.title = '所有回复';
-            }
                 break;
+            }
             case 0: {
-                unfollowed_text = '关注';
-                followed_text = '取关';
+                follow_text = '关注';
+                followed_text = '已关注';
+                unfollow_text = '取消关注';
                 info.title = '所有主题';
-            }
                 break;
+            }
             default: {
-                unfollowed_text = '在本帖关注';
-                followed_text = '在本帖取关';
+                follow_text = '在本帖关注';
+                followed_text = '已在本帖关注';
+                unfollow_text = '在本帖取关';
             }
         }
 
         const follow_btn = docre('button');
         const follow_status = GM_getValue(info.uid + '_followed_threads', []);
         const followed = follow_status.some(e => e.tid == info.tid);
-        follow_btn.textContent = followed ? followed_text : unfollowed_text;
+        follow_btn.className = followed ? 'helper-followed-button' : 'helper-follow-button';
+        follow_btn.textContent = followed ? followed_text : follow_text;
+
         follow_btn.addEventListener('click', async () => {
             const followed_num = GM_getValue('followed_num', 0);
             if (followed_num >= magic_num) {
-                alert('关注数已达上限，请及时清理关注列表.');
+                alert('关注数已达上限，请清理关注列表.');
                 return;
             }
             const follow_status = GM_getValue(info.uid + '_followed_threads', []);
             const followed = follow_status.some(e => e.tid == info.tid);
-            follow_btn.textContent = !followed ? followed_text : unfollowed_text;
+            follow_btn.className = !followed ? 'helper-followed-button' : 'helper-follow-button';
+            follow_btn.textContent = !followed ? followed_text : follow_text;
             recordFollow(info, !followed);
-            if (info.tid == -1 && !followed) {
+            if (info.tid == -1 && !followed) { // 特关同时也关注主题
                 recordFollow({ 'uid': info.uid, 'name': info.name, 'tid': 0, 'title': '所有主题' }, true);
             }
         });
+
+        follow_btn.addEventListener('mouseover', () => {
+            if (follow_btn.className == 'helper-followed-button') {
+                follow_btn.textContent = unfollow_text;
+            }
+        });
+        follow_btn.addEventListener('mouseout', () => {
+            if (follow_btn.className == 'helper-followed-button') {
+                follow_btn.textContent = followed_text;
+            }
+        });
+
         return follow_btn;
     }
 
@@ -1396,7 +1443,7 @@ label:has(.helper-toggle-switch)
     function createHelperSettingButton(btn_text, onclick) {
         const btn = docre('button');
         btn.type = 'button';
-        btn.classList.add('helper-button', 'helper-active-component');
+        btn.classList.add('helper-setting-button', 'helper-active-component');
         btn.textContent = btn_text;
         btn.addEventListener('click', onclick);
 
@@ -1585,11 +1632,13 @@ label:has(.helper-toggle-switch)
         const followed_users = await GM.getValue('followed_users', []);
         if (followed_users.length > 0) {
             let popup = qS('#nofication-popup');
-            const notification_messages = [];
+            let notification_messages = [];
+            let promises = [];
             for (let user of followed_users) {
                 let followed_threads = GM_getValue(user.uid + '_followed_threads', []);
                 for (let thread of followed_threads) {
-                    getUserNewestPostOrThread(user.uid, thread.tid, thread.last_tpid).then(new_infos => {
+                    console.log('thread', thread);
+                    promises.push(getUserNewestPostOrThread(user.uid, thread.tid, thread.last_tpid).then(new_infos => {
                         const new_threads = new_infos.new;
                         const found_last = new_infos.found;
                         const last_tpid = new_infos.last_tpid;
@@ -1611,7 +1660,7 @@ label:has(.helper-toggle-switch)
                         function createParaAndInsertUserNameLink(uid, parent) {
                             const messageElement = docre('p');
                             parent.appendChild(messageElement);
-                            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+                            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid };
                             const user_link = insertLink(user.name, user_URL_params, messageElement);
                             user_link.style.color = 'inherit'
                             return messageElement;
@@ -1663,15 +1712,17 @@ label:has(.helper-toggle-switch)
                         }
                         popup.appendChild(div);
                         notification_messages.push(div.innerHTML);
+
                         return notification_messages;
-                    }).then(notification_messages => {
-                        if (helper_setting.enable_history) {
-                            const old_notification_messages = GM_getValue('notification_messages', []);
-                            notification_messages = notification_messages.concat(old_notification_messages);
-                            updateGMList('notification_messages', notification_messages);
-                        }
-                    });
+                    }));
                 }
+            }
+
+            if (helper_setting.enable_history) {
+                await Promise.all(promises);
+                const old_notification_messages = GM_getValue('notification_messages', []);
+                notification_messages = notification_messages.concat(old_notification_messages);
+                updateGMList('notification_messages', notification_messages);
             }
         }
     }
@@ -1814,6 +1865,7 @@ label:has(.helper-toggle-switch)
 
 //优化
 // insertHelperLink
+// checked_posts
 
 // 搁置
 // TODO 上传表情
