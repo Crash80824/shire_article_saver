@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.5
+// @version      0.6.6
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -16,6 +16,7 @@
 // @grant        GM_deleteValue
 // @grant        GM.listValues
 // @grant        GM_listValues
+// @grant        GM.addStyle
 // @grant        GM_xmlhttpRequest
 // @grant        GM.download
 // @downloadURL https://update.greasyfork.org/scripts/461311/shire%20helper.user.js
@@ -47,10 +48,7 @@
         return;
     }
 
-    const helper_default_setting = { 'enable_notification': true, 'enable_history': true, 'enable_text_download': true, 'enable_attach_download': true, 'enable_op_download': true, 'files_pack_mode': 'no' };
-    if (typeof GM_getValue('helper_setting') === 'undefined') {
-        GM_setValue('helper_setting', helper_default_setting);
-    }
+    const helper_default_setting = { 'enable_notification': true, 'enable_history': true, 'enable_text_download': true, 'enable_attach_download': true, 'enable_op_download': true, 'files_pack_mode': 'no', 'default_merge_mode': 'main' };
 
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
     const large_page_num = 1024;
@@ -161,42 +159,271 @@
         cursor: pointer;
     `;
 
-    const helper_setting_popup_style = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        padding: 20px;
-        background: white;
-        border: 1px solid black;
-        max-height: 80%;
-        overflow-y: auto;
-        z-index: 10000;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    `;
-
-    const helper_setting_popup_tab_container_style = `
-        display: flex;
-        justify-content: space-around;
-        border-bottom: 1px solid #ccc;
-        margin-bottom: 10px;
-        white-space: nowrap;
-    `;
-
-    const helper_setting_popup_tab_style = `
-        flex: 1;
-        padding: 10px;
-        border: none;
-        border-bottom: 2px solid transparent;
-        background-color: white;
-        cursor: pointer;
-        outline: none;
-    `;
-
     const follow_list_table_style = `
         width: 100%;
         border-collapse: collapse;
     `;
+
+    GM.addStyle(`
+#helper-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+#helper-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 50%;
+  min-width: 600px;
+  min-height: 300px;
+  max-height: 80%;
+  background-color: white;
+  color: black !important;
+  border: 1px solid #ccc;
+  z-index: 2000;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#helper-title-container {
+  display: flex;
+  align-items: center;
+  padding: 20px;
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-align: left;
+  border-bottom: 1px solid #ccc;
+}
+
+#helper-title {
+  flex: 1;
+}
+
+#helper-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-left: 10px;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+  text-align: center;
+  transition: background-color 0.3s;
+}
+
+#helper-close-btn:hover {
+  background-color: #ddd;
+}
+
+.helper-hr {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid #ccc;
+}
+
+#helper-content-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.helper-scroll-component {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #888 #eee;
+}
+
+#helper-tab-btn-container {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.helper-tab-btn {
+  padding: 10px;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin: 5px;
+  border-radius: 12px;
+  transition: background-color 0.3s;
+  white-space: nowrap;
+}
+
+.helper-tab-selected {
+  background-color: #ddd;
+}
+
+#helper-tab-content-container {
+  flex: 1;
+  padding: 20px;
+  font-size: 0.75rem;
+}
+
+.helper-active-component {
+  height: 32px;
+  border-radius: 32px;
+}
+
+.helper-halfheight-active-component {
+  height: 16px;
+  border-radius: 16px;
+}
+
+.helper-setting-container {
+  display: flex;
+  min-height: 36px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px;
+}
+
+div:has(.helper-setting-container)
+  .helper-setting-container:not(:last-of-type) {
+  border-bottom: 1px solid #ccc;
+}
+
+label:has(.helper-toggle-switch) > input {
+  display: none;
+}
+
+.helper-toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  background-color: #ddd;
+  transition: background-color 0.3s;
+}
+
+.helper-toggle-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.3s;
+}
+
+label:has(.helper-toggle-switch) > input:checked + .helper-toggle-switch {
+  background-color: #4caf50;
+}
+
+label:has(.helper-toggle-switch)
+  > input:checked
+  + .helper-toggle-switch::after {
+  transform: translateX(15px);
+}
+
+.helper-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="black" class="bi bi-chevron-down" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>')
+    no-repeat right 10px center;
+  background-color: inherit;
+  color: inherit;
+  border: 1px solid #ccc;
+  padding: 0 10px;
+  width: 6rem;
+  transition: background-color 0.3s, border-color 0.3s;
+  cursor: pointer;
+  outline: none;
+}
+
+.helper-select:focus {
+  background-color: #ddd;
+  border-color: #ccc;
+}
+
+.helper-multicheck-container {
+  display: flex;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.helper-multicheck-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  position: relative;
+}
+
+.helper-multicheck-item:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background-color: #eee;
+}
+
+.helper-multicheck-item:not(:first-child) {
+  padding-left: 1px;
+}
+
+.helper-multicheck-item:not(:last-child)::before {
+  display: block;
+}
+
+.helper-multicheck-item input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.helper-multicheck-item
+  input[type="checkbox"]:checked
+  + .helper-multicheck-text {
+  background-color: #4caf50;
+}
+
+.helper-multicheck-item .helper-multicheck-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 10px;
+  background-color: inherit;
+  border: 1px solid transparent;
+  transition: background-color 0.3s;
+  box-sizing: border-box;
+}
+
+.helper-button {
+  padding: 0 20px;
+  background-color: inherit;
+  color: inherit;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+    `);
+
 
     // ========================================================================================================
     // 更新GM Value的函数
@@ -766,19 +993,23 @@
     // ========================================================================================================
     // 修改页面内容的函数
     // ========================================================================================================
-    function insertHelperSettingLink() {
+    function insertHelperLink() {
         let target_menu = qS('#myitem')
         if (target_menu) {
-            const helper_setting_link = insertInteractiveLink('助手', () => { if (!qS('#helper-setting-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
+            const helper_setting_link = insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
             helper_setting_link.id = 'helper_setting';
             const span = document.createElement('span');
             span.textContent = ' | ';
             span.className = 'pipe';
             insertElement(span, target_menu, 'insertBefore');
+            return;
         }
-        else {
+
+        target_menu = qS('#myspace');
+        if (target_menu) {
             target_menu = qS('#myspace')
-            insertInteractiveLink('助手', () => { if (!qS('#helper-setting-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
+            insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
+            return;
         }
     }
     function insertElement(elem, pos, type = 'append') {
@@ -999,21 +1230,6 @@
     // ========================================================================================================
     // 浮动弹窗相关
     // ========================================================================================================
-    window.addEventListener('click', (event) => {
-        const follow_list_popup = qS('#helper-setting-popup');
-        const helper_setting_link = qS('#helper_setting');
-        if (follow_list_popup && !follow_list_popup.contains(event.target) && !helper_setting_link.contains(event.target)) {
-            document.body.removeChild(follow_list_popup);
-        }
-    });
-
-    window.addEventListener('keydown', (event) => {
-        const follow_list_popup = qS('#helper-setting-popup');
-        if (follow_list_popup && event.key == 'Escape') {
-            document.body.removeChild(follow_list_popup);
-        }
-    });
-
     function createFollowListTable() {
         const table = document.createElement('table');
         table.style = follow_list_table_style;
@@ -1102,17 +1318,20 @@
     }
 
     function createHelperSettingSelect(text, attr, options = [], texts = []) {
+        const div = document.createElement('div');
+        div.className = 'helper-setting-container';
+
+        const text_node = document.createElement('div');
+        text_node.textContent = text;
+        div.appendChild(text_node);
+
         const status = helper_setting[attr];
         if (options.length == 0) {
             options = [status];
         }
 
-        const label = document.createElement('label');
-        label.textContent = text;
-        label.setAttribute('for', 'dynamicSelect');
-
         const select = document.createElement('select');
-
+        select.classList.add('helper-select', 'helper-active-component');
         options.forEach(option => {
             const opt = document.createElement('option');
             opt.value = option;
@@ -1127,14 +1346,21 @@
             helper_setting[attr] = e.target.value;
             GM.setValue('helper_setting', helper_setting);
         });
+        div.appendChild(select);
 
-        label.appendChild(select);
-
-        return label;
+        return div;
     }
 
-    function createHelperSettingCheckbox(text, attr) {
+    function createHelperSettingSwitch(text, attr) {
+        const div = document.createElement('div');
+        div.className = 'helper-setting-container';
+
+        const text_node = document.createElement('div');
+        text_node.textContent = text;
+        div.appendChild(text_node);
+
         const label = document.createElement('label');
+
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = helper_setting[attr];
@@ -1143,58 +1369,111 @@
             GM.setValue('helper_setting', helper_setting);
         });
         label.appendChild(checkbox);
-        const text_node = document.createTextNode(text);
-        label.appendChild(text_node);
-        return label;
+
+        const span = document.createElement('span');
+        span.classList.add('helper-toggle-switch', 'helper-halfheight-active-component');
+        label.appendChild(span);
+
+        div.appendChild(label);
+        return div;
+    }
+
+
+    function createHelperSettingMultiCheck(text, multichecks) {
+
+        const div = document.createElement('div');
+        div.className = 'helper-setting-container';
+
+        const text_node = document.createElement('div');
+        text_node.textContent = text;
+        div.appendChild(text_node);
+
+        const container = document.createElement('div');
+        container.classList.add('helper-multicheck-container', 'helper-active-component');
+
+        multichecks.forEach(option => {
+            const item = document.createElement('div');
+            item.className = 'helper-multicheck-item';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = helper_setting[option.attr];
+            checkbox.addEventListener('change', (e) => {
+                helper_setting[option.attr] = e.target.checked;
+                GM.setValue('helper_setting', helper_setting);
+            });
+            item.appendChild(checkbox);
+
+            const item_text = document.createElement('div');
+            item_text.textContent = option.text;
+            item_text.className = 'helper-multicheck-text';
+            item_text.addEventListener('click', () => {
+                checkbox.checked = !checkbox.checked;
+                checkbox.dispatchEvent(new Event('change'));
+            });
+            item.appendChild(item_text);
+
+            container.appendChild(item);
+        });
+
+        div.appendChild(container);
+        return div;
     }
 
     function createHelperSettingButton(text, onclick) {
+        const div = document.createElement('div');
+        div.className = 'helper-setting-container';
+
+        const text_node = document.createElement('div');
+        text_node.textContent = text;
+        div.appendChild(text_node);
+
         const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.classList.add('helper-button', 'helper-active-component');
         btn.textContent = text;
         btn.addEventListener('click', onclick);
-        return btn;
+        div.appendChild(btn);
+
+        return div;
     }
 
     function createHelperSettingTable() {
-        const table = document.createElement('table');
-        const cols = 3;
-        table.style = follow_list_table_style;
+        const div = document.createElement('div');
 
         const addItems = items => {
-            if (items.length == 0) {
-                return;
-            }
-            let tr = table.insertRow();
-            for (let i = 0; i < items.length; i++) {
-                if (i > 0 && i % 3 === 0) {
-                    tr = table.insertRow();
-                }
-                const td = tr.insertCell();
-                td.appendChild(items[i]);
-            }
+            items.forEach(item => {
+                div.appendChild(item);
+            });
         }
 
         let checkboxs = [];
+        let multichecks = [];
         let options = [];
         let buttons = []
+
+        // 开启文本下载
+        // checkboxs.push(createHelperSettingSwitch('文本下载', 'enable_text_download'));
+
+        // 开启附件下载
+        // checkboxs.push(createHelperSettingSwitch('附件下载', 'enable_attach_download'));
+
+        // 开启原创保护资源下载
+        // checkboxs.push(createHelperSettingSwitch('资源下载', 'enable_op_download'));
+
+        // 开启更新通知
+        checkboxs.push(createHelperSettingSwitch('更新通知', 'enable_notification'));
+
+        // 开启历史消息
+        checkboxs.push(createHelperSettingSwitch('历史消息', 'enable_history'));
+
+        multichecks.push(createHelperSettingMultiCheck('下载内容', [{ 'attr': 'enable_text_download', 'text': '文本' }, { 'attr': 'enable_attach_download', 'text': '附件' }, { 'attr': 'enable_op_download', 'text': '原创' }]));
 
         // 选择文件打包类型
         options.push(createHelperSettingSelect('文件打包', 'files_pack_mode', ['no', 'single', 'all'], ['不打包', '分类打包', '全部打包']));
 
-        // 开启文本下载
-        checkboxs.push(createHelperSettingCheckbox('文本下载', 'enable_text_download'));
-
-        // 开启附件下载
-        checkboxs.push(createHelperSettingCheckbox('附件下载', 'enable_attach_download'));
-
-        // 开启原创保护资源下载
-        checkboxs.push(createHelperSettingCheckbox('资源下载', 'enable_op_download'));
-
-        // 开启更新通知
-        checkboxs.push(createHelperSettingCheckbox('更新通知', 'enable_notification'));
-
-        // 开启历史消息
-        checkboxs.push(createHelperSettingCheckbox('历史消息', 'enable_history'));
+        // 选择默认合并下载模式
+        // options.push(createHelperSettingSelect('合并下载', 'default_merge_mode', ['main', 'page', 'author'], ['主楼', '全帖', '作者']));
 
         // 清除历史消息
         if (helper_setting.enable_history) {
@@ -1218,21 +1497,65 @@
         // 开启黑名单
 
         addItems(checkboxs);
+        addItems(multichecks);
         addItems(options);
         addItems(buttons);
 
-        return table;
+        return div;
     }
 
     function createHelperSettingPopup() {
+        const overlay = document.createElement('div');
+        overlay.id = 'helper-overlay';
+        overlay.addEventListener('click', () => {
+            document.body.removeChild(popup);
+            document.body.removeChild(overlay);
+        });
+
         const popup = document.createElement('div');
-        popup.id = 'helper-setting-popup';
-        popup.style = helper_setting_popup_style;
+        popup.id = 'helper-popup';
 
-        const tab_container = document.createElement('div');
-        tab_container.style = helper_setting_popup_tab_container_style;
+        const helper_title_container = document.createElement('div');
+        helper_title_container.id = 'helper-title-container';
+        popup.appendChild(helper_title_container);
 
-        const tabs = [{ 'name': '设置', 'func': createHelperSettingTable }, { 'name': '关注列表', 'func': createFollowListTable }];
+        const helper_title = document.createElement('div');
+        helper_title.id = 'helper-title';
+        helper_title.textContent = '湿热助手';
+        helper_title_container.appendChild(helper_title);
+
+        const close_btn = document.createElement('button');
+        close_btn.id = 'helper-close-btn';
+        close_btn.type = 'button';
+        close_btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+        close_btn.addEventListener('click', () => {
+            document.body.removeChild(popup);
+            document.body.removeChild(overlay);
+        });
+        helper_title_container.appendChild(close_btn);
+
+        const hr = document.createElement('hr');
+        hr.className = 'helper-hr';
+        popup.appendChild(hr);
+
+        const content_container = document.createElement('div');
+        content_container.id = 'helper-content-container';
+        popup.appendChild(content_container);
+
+        const tab_btn_container = document.createElement('div');
+        tab_btn_container.id = 'helper-tab-btn-container';
+        tab_btn_container.className = 'helper-scroll-component';
+        content_container.appendChild(tab_btn_container);
+
+        const tab_content_container = document.createElement('div');
+        tab_content_container.id = 'helper-tab-content-container';
+        tab_content_container.className = 'helper-scroll-component';
+        content_container.appendChild(tab_content_container);
+
+        const tabs = [{ 'name': '设置', 'func': createHelperSettingTable }];
+        if (helper_setting.enable_notification) {
+            tabs.push({ 'name': '关注列表', 'func': createFollowListTable });
+        }
         if (helper_setting.enable_history) {
             tabs.push({ 'name': '历史消息', 'func': createHistoryNotificationTable });
         }
@@ -1240,38 +1563,33 @@
             tabs.push({ 'name': '调试', 'func': createDebugTable });
         }
 
-        const tab_buttons = tabs.map((tab, index) => {
-            const button = document.createElement('button');
-            button.textContent = tab.name;
-            button.style = helper_setting_popup_tab_style;
+        const show_tab = content => {
+            tab_content_container.innerHTML = '';
+            tab_content_container.appendChild(content)
+        };
 
-            if (index === 0) {
-                button.style.borderBottom = '2px solid #007bff';
-            }
+        tabs.forEach((tab, index) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'helper-tab-btn';
+            btn.textContent = tab.name;
 
-            button.addEventListener('click', () => {
-                tab_contents.forEach((content, i) => {
-                    content.style.display = i === index ? 'block' : 'none';
-                });
-                tab_buttons.forEach(btn => btn.style.borderBottom = '2px solid transparent');
-                button.style.borderBottom = '2px solid #007bff';
+            btn.addEventListener('click', () => {
+                qSA('button', tab_btn_container).forEach(e => e.classList.remove('helper-tab-selected'));
+                btn.classList.add('helper-tab-selected');
+                show_tab(tab.func());
             });
 
-            tab_container.appendChild(button);
-            return button;
+            if (index == 0) {
+                btn.classList.add('helper-tab-selected');
+                show_tab(tab.func());
+            }
+
+            tab_btn_container.appendChild(btn);
         });
 
-        const tab_contents = tabs.map((tab, index) => {
-            const content = document.createElement('div');
-            content.style.display = index === 0 ? 'block' : 'none';
-            content.appendChild(tab.func());
-            return content;
-        });
-
-        popup.appendChild(tab_container);
-        tab_contents.forEach(content => popup.appendChild(content));
+        document.body.appendChild(overlay);
         document.body.appendChild(popup);
-
     }
 
     function createNotificationPopup() {
@@ -1435,8 +1753,13 @@
     // ========================================================================================================
     // 主体运行
     // ========================================================================================================
+    insertHelperLink();
+
     const helper_setting = GM_getValue('helper_setting');
-    insertHelperSettingLink();
+    if (typeof helper_setting === 'undefined') {
+        GM.setValue('helper_setting', helper_default_setting);
+        helper_setting = helper_default_setting;
+    }
 
     if (helper_setting.enable_notification) {
         updateNotificationPopup();
@@ -1480,10 +1803,10 @@
 // TODO op未加载的情况
 // TODO tg详情
 // TODO 代表作
+// TODO 辅助换行
+// TODO 上一集、下一集
 
 // 次优先
-// TODO 弹窗样式美化
-// TODO 弹窗字体颜色
 // TODO 黑名单
 // TODO 一键删除
 // TODO 跳过题图
@@ -1501,10 +1824,20 @@
 // TODO debug log
 // TODO 异常处理
 // TODO style处理
+// TODO 弹窗热更新
+// TODO button type
 
 // 调试
 // TODO 导出关注
 // TODO 删除键值
+
+// 美化
+// TODO 弹窗样式美化
+// TODO 弹窗字体颜色
+// TODO 关闭按钮居中
+
+//优化
+// insertHelperLink
 
 // 搁置
 // TODO 上传表情
