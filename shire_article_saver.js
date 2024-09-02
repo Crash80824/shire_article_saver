@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6.1
+// @version      0.6.6.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -33,6 +33,7 @@
     // ========================================================================================================
     const qS = (selector, parent = document) => parent.querySelector(selector);
     const qSA = (selector, parent = document) => parent.querySelectorAll(selector);
+    const docre = tag => document.createElement(tag);
     String.prototype.parseURL = function () {
         let obj = {};
         this.replace(/([^?=&#]+)=([^?=&#]+)/g, (_, key, value) => { obj[key] = value });
@@ -424,6 +425,12 @@ label:has(.helper-toggle-switch)
   width: 100%;
   border-collapse: collapse;
 }
+
+.helper-follow-table th, .helper-follow-table td {
+  padding: 8px;
+  text-align: center;
+}
+
     `);
 
 
@@ -720,7 +727,7 @@ label:has(.helper-toggle-switch)
                             const reader = new FileReader();
                             reader.readAsDataURL(blob);
                             reader.onload = () => {
-                                const a = document.createElement('a');
+                                const a = docre('a');
                                 a.download = `${title}.${ext}`;
                                 a.href = reader.result;
                                 a.click();
@@ -749,7 +756,7 @@ label:has(.helper-toggle-switch)
         const promises = target_list.map(target => downloadFromURL(target, zip));
         Promise.all(promises).then(() => {
             zip.generateAsync({ type: 'blob' }).then(content => {
-                const a = document.createElement('a');
+                const a = docre('a');
                 a.download = zip_name + '.zip';
                 a.href = URL.createObjectURL(content);
                 a.click();
@@ -1000,10 +1007,10 @@ label:has(.helper-toggle-switch)
         if (target_menu) {
             const helper_setting_link = insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
             helper_setting_link.id = 'helper_setting';
-            const span = document.createElement('span');
+            const span = docre('span');
             span.textContent = ' | ';
             span.className = 'pipe';
-            insertElement(span, target_menu, 'insertBefore');
+            insertElement(span, target_menu);
             return;
         }
 
@@ -1014,7 +1021,7 @@ label:has(.helper-toggle-switch)
             return;
         }
     }
-    function insertElement(elem, pos, type = 'append') {
+    function insertElement(elem, pos, type = 'insertBefore') {
         switch (type) {
             case 'append':
                 pos.appendChild(elem);
@@ -1029,7 +1036,7 @@ label:has(.helper-toggle-switch)
     }
 
     function insertInteractiveLink(text, func, pos, type = 'append') {
-        const a = document.createElement('a');
+        const a = docre('a');
         a.href = 'javascript:void(0)';
         a.textContent = text;
         if (func instanceof Function) {
@@ -1040,7 +1047,7 @@ label:has(.helper-toggle-switch)
     }
 
     function insertLink(text, URL_params, pos, max_text_length = 0, type = 'append') {
-        const a = document.createElement('a');
+        const a = docre('a');
         if (max_text_length > 0 && text.length > max_text_length) {
             a.text = text.slice(0, max_text_length) + '...';
             a.title = text;
@@ -1054,7 +1061,7 @@ label:has(.helper-toggle-switch)
         return a;
     }
 
-    function insertFollowBtn(info, pos, type = 'append') {
+    function createFollowButton(info) {
         let unfollowed_text;
         let followed_text;
         switch (info.tid) {
@@ -1076,7 +1083,7 @@ label:has(.helper-toggle-switch)
             }
         }
 
-        const follow_btn = document.createElement('button');
+        const follow_btn = docre('button');
         const follow_status = GM_getValue(info.uid + '_followed_threads', []);
         const followed = follow_status.some(e => e.tid == info.tid);
         follow_btn.textContent = followed ? followed_text : unfollowed_text;
@@ -1094,7 +1101,7 @@ label:has(.helper-toggle-switch)
                 recordFollow({ 'uid': info.uid, 'name': info.name, 'tid': 0, 'title': '所有主题' }, true);
             }
         });
-        insertElement(follow_btn, pos, type);
+        return follow_btn;
     }
 
     async function updatePostInPage() {
@@ -1109,14 +1116,13 @@ label:has(.helper-toggle-switch)
             const pid = post_info.post_id;
             const uid = post_info.post_auth_id;
 
-            // 添加保存复选框
-            const label = document.createElement('label');
+            const label = docre('label');
             const label_text = document.createTextNode('保存本层');
             label.className = 'x1 xl2 o cl';
             label.appendChild(label_text);
             qS('tbody > tr:nth-child(1) > td.pls > div', post).appendChild(label);
 
-            const checkbox = document.createElement('input');
+            const checkbox = docre('input');
             checkbox.id = 'post_check_' + pid;
             checkbox.type = 'checkbox';
             checkbox.checked = checked_posts.includes(pid);
@@ -1124,22 +1130,19 @@ label:has(.helper-toggle-switch)
             label.appendChild(checkbox);
 
             all_checked = all_checked && checkbox.checked;
-            // 结束添加保存复选框
 
-            // 添加关注按钮
             const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
-            insertFollowBtn({ 'uid': uid, 'name': post_info.post_auth, 'tid': 0 }, profile_icon);
+            profile_icon.appendChild(createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': 0 }));
             const user_level = qS('[id^=favatar] > p:nth-child(5)', post)
-            insertFollowBtn({ 'uid': uid, 'name': post_info.post_auth, 'tid': tid, 'title': thread_title }, user_level);
-            // 结束添加关注按钮
+            user_level.appendChild(createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': tid, 'title': thread_title }));
         }
 
-        const label = document.createElement('label');
+        const label = docre('label');
         const label_text = document.createTextNode(all_checked ? '清空全选' : '全选本页');
         label.appendChild(label_text);
         qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div').appendChild(label);
 
-        const checkbox = document.createElement('input');
+        const checkbox = docre('input');
         checkbox.id = 'page_checked_all';
         checkbox.type = 'checkbox';
         checkbox.checked = all_checked;
@@ -1155,13 +1158,13 @@ label:has(.helper-toggle-switch)
         for (let thread of thread_in_page) {
             const link = qS('th > a', thread)
             const tid = link.href.parseURL().tid;
-            const checkbox = document.createElement('input');
+            const checkbox = docre('input');
             checkbox.id = 'thread_check_' + tid;
             checkbox.type = 'checkbox';
             checkbox.className = 'pc';
             checkbox.checked = checked_threads.includes(tid);
 
-            link.parentNode.insertBefore(checkbox, link);
+            insertElement(checkbox, link);
 
             if (qS('td:nth-child(3) > a', thread).textContent == '保密存档') {
                 checkbox.disabled = true;
@@ -1211,13 +1214,13 @@ label:has(.helper-toggle-switch)
             const name = getSpaceAuthor();
             const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': URL_info.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
             insertLink(`${name}的主题`, URL_params, toptb);
-            insertFollowBtn({ 'uid': URL_info.uid, 'name': name, 'tid': URL_info.type == 'reply' ? -1 : 0 }, toptb);
+            toptb.appendChild(createFollowButton({ 'uid': URL_info.uid, 'name': name, 'tid': URL_info.type == 'reply' ? -1 : 0 }));
         }
 
         if (URL_info.mod == 'space' && URL_info.uid == GM_info.script.author && URL_info.do == 'wall' && URL_info.loc == 'home') {
             const pos = qS('#pcd > div > ul');
-            const label = document.createElement('label');
-            const checkbox = document.createElement('input');
+            const label = docre('label');
+            const checkbox = docre('input');
             checkbox.type = 'checkbox';
             checkbox.checked = helper_setting.enable_debug_mode;
             checkbox.addEventListener('change', () => { helper_setting.enable_debug_mode = checkbox.checked; GM.setValue('helper_setting', helper_setting); });
@@ -1233,21 +1236,20 @@ label:has(.helper-toggle-switch)
     // 浮动弹窗相关
     // ========================================================================================================
     function createFollowListTable() {
-        const table = document.createElement('table');
+        const table = docre('table');
         table.className = 'helper-follow-table';
         const followed_users = GM_getValue('followed_users', []);
         if (followed_users.length > 0) {
             const title_row = table.insertRow();
-            const user_title_cell = title_row.insertCell(0);
-            const thread_title_cell = title_row.insertCell(1);
-            const follow_title_cell = title_row.insertCell(2);
-            user_title_cell.textContent = '用户';
-            thread_title_cell.textContent = '关注内容';
-            follow_title_cell.textContent = '操作';
-            user_title_cell.style.padding = '8px';
-            thread_title_cell.style.padding = '8px';
-            follow_title_cell.style.padding = '8px';
-            follow_title_cell.style.textAlign = 'center';
+            const user_title = docre('th');
+            const thread_title = docre('th');
+            const follow_title = docre('th');
+            user_title.textContent = '用户';
+            thread_title.textContent = '关注内容';
+            follow_title.textContent = '操作';
+            title_row.appendChild(user_title);
+            title_row.appendChild(thread_title);
+            title_row.appendChild(follow_title);
 
             for (let user of followed_users) {
                 const followed_threads = GM_getValue(user.uid + '_followed_threads', []);
@@ -1271,12 +1273,7 @@ label:has(.helper-toggle-switch)
                         thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
                     }
                     insertLink(thread.title, thread_URL_params, thread_cell, 10);
-                    insertFollowBtn({ 'uid': user.uid, 'name': user.name, 'tid': thread.tid, 'title': thread.title }, follow_cell);
-
-                    user_cell.style.padding = '8px';
-                    thread_cell.style.padding = '8px';
-                    follow_cell.style.padding = '8px';
-                    follow_cell.style.textAlign = 'center';
+                    follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': thread.tid, 'title': thread.title }));
                 }
             }
         }
@@ -1291,17 +1288,17 @@ label:has(.helper-toggle-switch)
     }
 
     function createHistoryNotificationTable() {
-        const div = document.createElement('div');
+        const div = docre('div');
         const notification_messages = GM_getValue('notification_messages', []);
         if (notification_messages.length > 0) {
             for (let message of notification_messages) {
-                const p = document.createElement('p');
+                const p = docre('p');
                 p.innerHTML = message;
                 div.appendChild(p);
             }
         }
         else {
-            const p = document.createElement('p');
+            const p = docre('p');
             p.textContent = '暂无历史消息';
             div.appendChild(p);
         }
@@ -1309,10 +1306,10 @@ label:has(.helper-toggle-switch)
     }
 
     function createDebugTable() {
-        const div = document.createElement('div');
+        const div = docre('div');
         const all_value = GM_listValues();
         all_value.forEach(element => {
-            const p = document.createElement('p');
+            const p = docre('p');
             p.textContent = element + ':' + JSON.stringify(GM_getValue(element));
             div.appendChild(p);
         });
@@ -1325,10 +1322,10 @@ label:has(.helper-toggle-switch)
             options = [status];
         }
 
-        const select = document.createElement('select');
+        const select = docre('select');
         select.classList.add('helper-select', 'helper-active-component');
         options.forEach(option => {
-            const opt = document.createElement('option');
+            const opt = docre('option');
             opt.value = option;
             opt.textContent = texts[options.indexOf(option)] || option;
             if (option == status) {
@@ -1346,9 +1343,9 @@ label:has(.helper-toggle-switch)
     }
 
     function createHelperSettingSwitch(attr) {
-        const label = document.createElement('label');
+        const label = docre('label');
 
-        const checkbox = document.createElement('input');
+        const checkbox = docre('input');
         checkbox.type = 'checkbox';
         checkbox.checked = helper_setting[attr];
         checkbox.addEventListener('change', (e) => {
@@ -1357,7 +1354,7 @@ label:has(.helper-toggle-switch)
         });
         label.appendChild(checkbox);
 
-        const span = document.createElement('span');
+        const span = docre('span');
         span.classList.add('helper-toggle-switch', 'helper-halfheight-active-component');
         label.appendChild(span);
 
@@ -1365,14 +1362,14 @@ label:has(.helper-toggle-switch)
     }
 
     function createHelperSettingMultiCheck(multichecks) {
-        const container = document.createElement('div');
+        const container = docre('div');
         container.classList.add('helper-multicheck-container', 'helper-active-component');
 
         multichecks.forEach(option => {
-            const item = document.createElement('div');
+            const item = docre('div');
             item.className = 'helper-multicheck-item';
 
-            const checkbox = document.createElement('input');
+            const checkbox = docre('input');
             checkbox.type = 'checkbox';
             checkbox.checked = helper_setting[option.attr];
             checkbox.addEventListener('change', (e) => {
@@ -1381,7 +1378,7 @@ label:has(.helper-toggle-switch)
             });
             item.appendChild(checkbox);
 
-            const item_text = document.createElement('div');
+            const item_text = docre('div');
             item_text.textContent = option.text;
             item_text.className = 'helper-multicheck-text';
             item_text.addEventListener('click', () => {
@@ -1397,7 +1394,7 @@ label:has(.helper-toggle-switch)
     }
 
     function createHelperSettingButton(btn_text, onclick) {
-        const btn = document.createElement('button');
+        const btn = docre('button');
         btn.type = 'button';
         btn.classList.add('helper-button', 'helper-active-component');
         btn.textContent = btn_text;
@@ -1417,12 +1414,12 @@ label:has(.helper-toggle-switch)
             case 'button':
                 return createHelperSettingButton(...args);
             default:
-                return document.createElement('div');
+                return docre('div');
         }
     }
 
     function createHelperSettingTable() {
-        const div = document.createElement('div');
+        const div = docre('div');
         let components = [];
 
         // 开启更新通知
@@ -1466,10 +1463,10 @@ label:has(.helper-toggle-switch)
         // 开启黑名单
 
         components.forEach(component => {
-            const container = document.createElement('div');
+            const container = docre('div');
             container.className = 'helper-setting-container';
 
-            const text_node = document.createElement('div');
+            const text_node = docre('div');
             text_node.textContent = component.title;
             container.appendChild(text_node);
 
@@ -1483,26 +1480,26 @@ label:has(.helper-toggle-switch)
     }
 
     function createHelperSettingPopup() {
-        const overlay = document.createElement('div');
+        const overlay = docre('div');
         overlay.id = 'helper-overlay';
         overlay.addEventListener('click', () => {
             document.body.removeChild(popup);
             document.body.removeChild(overlay);
         });
 
-        const popup = document.createElement('div');
+        const popup = docre('div');
         popup.id = 'helper-popup';
 
-        const helper_title_container = document.createElement('div');
+        const helper_title_container = docre('div');
         helper_title_container.id = 'helper-title-container';
         popup.appendChild(helper_title_container);
 
-        const helper_title = document.createElement('div');
+        const helper_title = docre('div');
         helper_title.id = 'helper-title';
         helper_title.textContent = '湿热助手';
         helper_title_container.appendChild(helper_title);
 
-        const close_btn = document.createElement('button');
+        const close_btn = docre('button');
         close_btn.id = 'helper-close-btn';
         close_btn.type = 'button';
         close_btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
@@ -1512,20 +1509,20 @@ label:has(.helper-toggle-switch)
         });
         helper_title_container.appendChild(close_btn);
 
-        const hr = document.createElement('hr');
+        const hr = docre('hr');
         hr.className = 'helper-hr';
         popup.appendChild(hr);
 
-        const content_container = document.createElement('div');
+        const content_container = docre('div');
         content_container.id = 'helper-content-container';
         popup.appendChild(content_container);
 
-        const tab_btn_container = document.createElement('div');
+        const tab_btn_container = docre('div');
         tab_btn_container.id = 'helper-tab-btn-container';
         tab_btn_container.className = 'helper-scroll-component';
         content_container.appendChild(tab_btn_container);
 
-        const tab_content_container = document.createElement('div');
+        const tab_content_container = docre('div');
         tab_content_container.id = 'helper-tab-content-container';
         tab_content_container.className = 'helper-scroll-component';
         content_container.appendChild(tab_content_container);
@@ -1547,7 +1544,7 @@ label:has(.helper-toggle-switch)
         };
 
         tabs.forEach((tab, index) => {
-            const btn = document.createElement('button');
+            const btn = docre('button');
             btn.type = 'button';
             btn.className = 'helper-tab-btn';
             btn.textContent = tab.name;
@@ -1571,12 +1568,12 @@ label:has(.helper-toggle-switch)
     }
 
     function createNotificationPopup() {
-        const popup = document.createElement('div');
+        const popup = docre('div');
         popup.id = 'nofication-popup';
         popup.style = nofication_popup_style;
         document.body.appendChild(popup);
 
-        const close_btn = document.createElement('button');
+        const close_btn = docre('button');
         close_btn.className = 'close-btn';
         close_btn.style = nofication_popup_close_btn_style;
         close_btn.onclick = () => { popup.style.display = 'none' };
@@ -1612,7 +1609,7 @@ label:has(.helper-toggle-switch)
                         }
 
                         function createParaAndInsertUserNameLink(uid, parent) {
-                            const messageElement = document.createElement('p');
+                            const messageElement = docre('p');
                             parent.appendChild(messageElement);
                             const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
                             const user_link = insertLink(user.name, user_URL_params, messageElement);
@@ -1620,7 +1617,7 @@ label:has(.helper-toggle-switch)
                             return messageElement;
                         }
 
-                        const div = document.createElement('div');
+                        const div = docre('div');
                         if (thread.tid != 0) {
                             for (let new_thread of new_threads) {
                                 const thread_title = new_thread.title;
