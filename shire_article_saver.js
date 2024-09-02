@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6
+// @version      0.6.6.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -159,11 +159,6 @@
         cursor: pointer;
     `;
 
-    const follow_list_table_style = `
-        width: 100%;
-        border-collapse: collapse;
-    `;
-
     GM.addStyle(`
 #helper-overlay {
   position: fixed;
@@ -254,6 +249,7 @@
   padding: 10px;
   border: none;
   background-color: transparent;
+  color: inherit;
   cursor: pointer;
   text-align: center;
   font-size: 0.75rem;
@@ -412,6 +408,7 @@ label:has(.helper-toggle-switch)
   border: 1px solid transparent;
   transition: background-color 0.3s;
   box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .helper-button {
@@ -421,6 +418,11 @@ label:has(.helper-toggle-switch)
   border: 1px solid #ccc;
   cursor: pointer;
   transition: background-color 0.3s;
+}
+
+.helper-follow-table {
+  width: 100%;
+  border-collapse: collapse;
 }
     `);
 
@@ -1232,7 +1234,7 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     function createFollowListTable() {
         const table = document.createElement('table');
-        table.style = follow_list_table_style;
+        table.className = 'helper-follow-table';
         const followed_users = GM_getValue('followed_users', []);
         if (followed_users.length > 0) {
             const title_row = table.insertRow();
@@ -1317,14 +1319,7 @@ label:has(.helper-toggle-switch)
         return div;
     }
 
-    function createHelperSettingSelect(text, attr, options = [], texts = []) {
-        const div = document.createElement('div');
-        div.className = 'helper-setting-container';
-
-        const text_node = document.createElement('div');
-        text_node.textContent = text;
-        div.appendChild(text_node);
-
+    function createHelperSettingSelect(attr, options = [], texts = []) {
         const status = helper_setting[attr];
         if (options.length == 0) {
             options = [status];
@@ -1346,19 +1341,11 @@ label:has(.helper-toggle-switch)
             helper_setting[attr] = e.target.value;
             GM.setValue('helper_setting', helper_setting);
         });
-        div.appendChild(select);
 
-        return div;
+        return select;
     }
 
-    function createHelperSettingSwitch(text, attr) {
-        const div = document.createElement('div');
-        div.className = 'helper-setting-container';
-
-        const text_node = document.createElement('div');
-        text_node.textContent = text;
-        div.appendChild(text_node);
-
+    function createHelperSettingSwitch(attr) {
         const label = document.createElement('label');
 
         const checkbox = document.createElement('input');
@@ -1374,20 +1361,10 @@ label:has(.helper-toggle-switch)
         span.classList.add('helper-toggle-switch', 'helper-halfheight-active-component');
         label.appendChild(span);
 
-        div.appendChild(label);
-        return div;
+        return label;
     }
 
-
-    function createHelperSettingMultiCheck(text, multichecks) {
-
-        const div = document.createElement('div');
-        div.className = 'helper-setting-container';
-
-        const text_node = document.createElement('div');
-        text_node.textContent = text;
-        div.appendChild(text_node);
-
+    function createHelperSettingMultiCheck(multichecks) {
         const container = document.createElement('div');
         container.classList.add('helper-multicheck-container', 'helper-active-component');
 
@@ -1416,90 +1393,91 @@ label:has(.helper-toggle-switch)
             container.appendChild(item);
         });
 
-        div.appendChild(container);
-        return div;
+        return container;
     }
 
-    function createHelperSettingButton(text, onclick) {
-        const div = document.createElement('div');
-        div.className = 'helper-setting-container';
-
-        const text_node = document.createElement('div');
-        text_node.textContent = text;
-        div.appendChild(text_node);
-
+    function createHelperSettingButton(btn_text, onclick) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.classList.add('helper-button', 'helper-active-component');
-        btn.textContent = text;
+        btn.textContent = btn_text;
         btn.addEventListener('click', onclick);
-        div.appendChild(btn);
 
-        return div;
+        return btn;
+    }
+
+    function createHelperActiveComponent(type, args) {
+        switch (type) {
+            case 'switch':
+                return createHelperSettingSwitch(...args);
+            case 'multicheck':
+                return createHelperSettingMultiCheck(...args);
+            case 'select':
+                return createHelperSettingSelect(...args);
+            case 'button':
+                return createHelperSettingButton(...args);
+            default:
+                return document.createElement('div');
+        }
     }
 
     function createHelperSettingTable() {
         const div = document.createElement('div');
-
-        const addItems = items => {
-            items.forEach(item => {
-                div.appendChild(item);
-            });
-        }
-
-        let checkboxs = [];
-        let multichecks = [];
-        let options = [];
-        let buttons = []
-
-        // 开启文本下载
-        // checkboxs.push(createHelperSettingSwitch('文本下载', 'enable_text_download'));
-
-        // 开启附件下载
-        // checkboxs.push(createHelperSettingSwitch('附件下载', 'enable_attach_download'));
-
-        // 开启原创保护资源下载
-        // checkboxs.push(createHelperSettingSwitch('资源下载', 'enable_op_download'));
+        let components = [];
 
         // 开启更新通知
-        checkboxs.push(createHelperSettingSwitch('更新通知', 'enable_notification'));
+        components.push({ 'title': '订阅更新通知', 'type': 'switch', 'args': ['enable_notification'] });
 
         // 开启历史消息
-        checkboxs.push(createHelperSettingSwitch('历史消息', 'enable_history'));
+        components.push({ 'title': '保存历史通知', 'type': 'switch', 'args': ['enable_history'] });
 
-        multichecks.push(createHelperSettingMultiCheck('下载内容', [{ 'attr': 'enable_text_download', 'text': '文本' }, { 'attr': 'enable_attach_download', 'text': '附件' }, { 'attr': 'enable_op_download', 'text': '原创' }]));
+        // 选择下载内容
+        components.push({ 'title': '主题保存内容', 'type': 'multicheck', 'args': [[{ 'attr': 'enable_text_download', 'text': '文本' }, { 'attr': 'enable_attach_download', 'text': '附件' }, { 'attr': 'enable_op_download', 'text': '原创资源' }]] });
 
-        // 选择文件打包类型
-        options.push(createHelperSettingSelect('文件打包', 'files_pack_mode', ['no', 'single', 'all'], ['不打包', '分类打包', '全部打包']));
+        // 选择文件打包模式
+        components.push({ 'title': '归档保存方式', 'type': 'select', 'args': ['files_pack_mode', ['no', 'single', 'all'], ['不归档', '分类归档', '全部归档']] });
 
         // 选择默认合并下载模式
-        // options.push(createHelperSettingSelect('合并下载', 'default_merge_mode', ['main', 'page', 'author'], ['主楼', '全帖', '作者']));
 
         // 清除历史消息
         if (helper_setting.enable_history) {
-            buttons.push(createHelperSettingButton('清空消息', () => {
-                const confirm = window.confirm('确定清空历史消息？');
-                if (confirm) {
-                    GM.deleteValue('notification_messages');
-                    location.reload();
-                }
-            }));
+            components.push({
+                'title': '清空历史通知', 'type': 'button', 'args': ['全部清空', () => {
+                    const confirm = window.confirm('确定清空所有历史通知？');
+                    if (confirm) {
+                        GM.deleteValue('notification_messages');
+                        location.reload();
+                    }
+                }]
+            });
         }
 
-        buttons.push(createHelperSettingButton('清空数据', () => {
-            const confirm = window.confirm('确定清空所有数据？');
-            if (confirm) {
-                GM_listValues().forEach(e => GM.deleteValue(e));
-                location.reload();
-            }
-        }));
+        // 清除脚本数据
+        components.push({
+            'title': '清空脚本数据', 'type': 'button', 'args': ['全部清空', () => {
+                const confirm = window.confirm('确定清空脚本所有数据？');
+                if (confirm) {
+                    GM_listValues().forEach(e => GM.deleteValue(e));
+                    location.reload();
+                }
+            }]
+        });
         // 开启辅助换行
         // 开启黑名单
 
-        addItems(checkboxs);
-        addItems(multichecks);
-        addItems(options);
-        addItems(buttons);
+        components.forEach(component => {
+            const container = document.createElement('div');
+            container.className = 'helper-setting-container';
+
+            const text_node = document.createElement('div');
+            text_node.textContent = component.title;
+            container.appendChild(text_node);
+
+            const active_component = createHelperActiveComponent(component.type, component.args);
+            container.appendChild(active_component);
+
+            div.appendChild(container);
+        });
 
         return div;
     }
@@ -1798,7 +1776,7 @@ label:has(.helper-toggle-switch)
 // TODO 自动回复
 // TODO 保证弹窗弹出
 // TODO 站务着色
-// TODO 版面浮动名片添加关注
+// TODO 版面浮动名片、好友浮动名片添加关注
 // TODO 图片预览
 // TODO op未加载的情况
 // TODO tg详情
@@ -1816,7 +1794,7 @@ label:has(.helper-toggle-switch)
 // TODO 用户改名提醒
 // TODO 辅助换行
 // TODO md格式
-// TODO 分割线样式
+// TODO 纯文本分割线样式
 // TODO NSFW
 
 
@@ -1824,6 +1802,7 @@ label:has(.helper-toggle-switch)
 // TODO debug log
 // TODO 异常处理
 // TODO style处理
+// TODO 关注列表样式
 // TODO 弹窗热更新
 // TODO button type
 
