@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6.8
+// @version      0.6.6.9
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -49,7 +49,17 @@
         return;
     }
 
-    const helper_default_setting = { 'enable_notification': true, 'enable_history': true, 'enable_text_download': true, 'enable_attach_download': true, 'enable_op_download': true, 'files_pack_mode': 'no', 'default_merge_mode': 'main' };
+    const helper_default_setting = {
+        'enable_notification': true,
+        'enable_history': true,
+        'enable_text_download': true,
+        'enable_attach_download': true,
+        'enable_op_download': true,
+        'files_pack_mode': 'no',
+        'default_merge_mode': 'main',
+        'enable_auto_reply': true,
+        'auto_reply_message': '收藏了，谢谢楼主分享！'
+    };
 
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
     const large_page_num = 1024;
@@ -83,7 +93,7 @@
     });
     const startWithChinese = str => /^[\p{Script=Han}]/u.test(str);
     const extractFileAndExt = str => {
-        const exts = Array.from(extensionMap.values()).join('|');
+        const exts = Array.from(Object.values(extensionMap)).join('|');
         const regex = new RegExp(`([^\\/]+)\\.(${exts})$`, 'i');
         const match = str.match(regex);
         return match ? [match[1], match[2]] : [str, ''];
@@ -789,8 +799,10 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     function downloadFromURL(target, zip = null) {
         const url = target.url;
-        const title = target.title;
+        let title = target.title;
         const is_blob = Boolean(target.is_blob);
+
+        console.log('e', new Date().toISOString());
 
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -799,6 +811,7 @@ label:has(.helper-toggle-switch)
                 responseType: 'blob',
                 onload: response => {
                     const content_type = response.responseHeaders.match(/Content-Type: (.+)/i);
+                    console.log('f', new Date().toISOString());
                     let ext = 'unknown';
                     if (content_type && content_type[1]) {
                         ext = extensionMap[content_type[1]] || 'unknown';
@@ -817,15 +830,18 @@ label:has(.helper-toggle-switch)
                         else {
                             const reader = new FileReader();
                             reader.readAsDataURL(blob);
+                            console.log('g', new Date().toISOString());
                             reader.onload = () => {
                                 const a = docre('a');
                                 a.download = `${title}.${ext}`;
                                 a.href = reader.result;
                                 a.click();
+                                console.log('h', new Date().toISOString());
                             }
                             const revokeURL = () => is_blob ? URL.revokeObjectURL(url) : null;
                             reader.onloadend = revokeURL;
                             resolve();
+                            console.log('i', new Date().toISOString());
                         }
                     }
                 }
@@ -865,6 +881,8 @@ label:has(.helper-toggle-switch)
 
         let download_list = []
 
+        console.log('b', new Date().toISOString());
+
         if (helper_setting.enable_text_download) {
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
@@ -884,9 +902,12 @@ label:has(.helper-toggle-switch)
             download_list.push({ 'list': op, 'name': '原创资源保护' });
         }
 
+        console.log('c', new Date().toISOString());
+
         switch (helper_setting.files_pack_mode) {
             case 'no':
                 download_list.forEach(target => target.list.forEach(e => downloadFromURL(e)));
+                console.log('d', new Date().toISOString());
                 break;
             case 'single':
                 download_list.forEach(target => createZipAndDownloadFromURLs(`${filename}_${target.name}`, target.list));
@@ -906,6 +927,7 @@ label:has(.helper-toggle-switch)
             let text = file_info;
             let content = await getPageContent(document, 'main');
             text += content.text;
+            console.log('a', new Date().toISOString());
             saveFile(title_name, text, content.attach, content.op);
         }
         else {
@@ -953,7 +975,6 @@ label:has(.helper-toggle-switch)
                 GM.deleteValue(thread_id + '_checked_posts');
             }
         }
-
     }
 
     async function saveMergedThreads() {
@@ -982,6 +1003,18 @@ label:has(.helper-toggle-switch)
         filename += '（合集）';
         saveFile(filename, content);
         GM.deleteValue(uid + '_checked_threads');
+    }
+
+    function autoReply() {
+        const reply_text = helper_setting.auto_reply_message;
+        const reply_textarea = qS('#fastpostmessage');
+        if (reply_textarea) {
+            reply_textarea.value = reply_text;
+        }
+        const reply_btn = qS('#fastpostsubmit');
+        if (reply_btn) {
+            reply_btn.click();
+        }
     }
 
     // ========================================================================================================
@@ -1262,6 +1295,8 @@ label:has(.helper-toggle-switch)
         const checkbox = docre('input');
         checkbox.id = 'page_checked_all';
         checkbox.type = 'checkbox';
+        checkbox.className = 'helper-checkbox';
+        checkbox.style.verticalAlign = 'middle';
         checkbox.checked = all_checked;
         checkbox.addEventListener('change', () => { changePageAllCheckboxs() });
         label.appendChild(checkbox);
@@ -1298,18 +1333,25 @@ label:has(.helper-toggle-switch)
 
         updatePostInPage();
 
+        const saveFunc = (type = 'main') => async () => {
+            saveThread(type);
+            // if (helper_setting.auto_reply) {
+            //     autoReply();
+            // }
+        };
+
         if (isFirstPage()) {
-            insertInteractiveLink('保存主楼  ', () => saveThread(), qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
+            insertInteractiveLink('保存主楼  ', saveFunc(), qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
 
             if (is_only_author) {
-                insertInteractiveLink('保存作者  ', () => saveThread("page"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+                insertInteractiveLink('保存作者  ', saveFunc("page"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
             }
             else {
-                insertInteractiveLink('保存全帖  ', () => saveThread("page"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+                insertInteractiveLink('保存全帖  ', saveFunc("page"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
             }
         }
 
-        insertInteractiveLink('保存选中  ', () => saveThread("checked"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+        insertInteractiveLink('保存选中  ', saveFunc("checked"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 
     async function modifySpacePage() {
@@ -1360,7 +1402,6 @@ label:has(.helper-toggle-switch)
                 return;
             }
             const popup = qS('#helper-popup');
-            console.log(popup);
             if (popup) {
                 document.body.removeChild(popup);
             }
@@ -1444,7 +1485,6 @@ label:has(.helper-toggle-switch)
         const div = docre('div');
         const notification_messages = GM_getValue('notification_messages', []);
         if (notification_messages.length > 0) {
-            console.log(notification_messages);
             notification_messages.forEach(message => { div.innerHTML += message; });
         }
         else {
@@ -1883,10 +1923,16 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     insertHelperLink();
 
-    const helper_setting = GM_getValue('helper_setting');
-    if (typeof helper_setting === 'undefined') {
-        GM.setValue('helper_setting', helper_default_setting);
-        helper_setting = helper_default_setting;
+    const helper_setting = GM_getValue('helper_setting', {});
+    let default_update = false;
+    for (let key in helper_default_setting) {
+        if (!(key in helper_setting)) {
+            helper_setting[key] = helper_default_setting[key];
+            default_update = true;
+        }
+    }
+    if (default_update) {
+        GM.setValue('helper_setting', helper_setting);
     }
 
     if (helper_setting.enable_notification) {
@@ -1955,10 +2001,6 @@ label:has(.helper-toggle-switch)
 // 调试
 // TODO 导出关注
 // TODO 删除键值
-
-// 美化
-// TODO 下载按钮
-// TODO 主题页多选
 
 // 优化
 // insertHelperLink
