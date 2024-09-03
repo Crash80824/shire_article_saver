@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6.7
+// @version      0.6.6.8
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1352,6 +1352,25 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     // 浮动弹窗相关
     // ========================================================================================================
+    window.addEventListener('keydown', e => {
+        if (e.key == 'Escape') {
+            const noti_popup = qS('#helper-notification-popup');
+            if (noti_popup && noti_popup.style.display != 'none') {
+                noti_popup.style.display = 'none';
+                return;
+            }
+            const popup = qS('#helper-popup');
+            console.log(popup);
+            if (popup) {
+                document.body.removeChild(popup);
+            }
+            const overlay = qS('#helper-overlay');
+            if (overlay) {
+                document.body.removeChild(overlay);
+            }
+        }
+    });
+
     function createCloseButton(onclick) {
         const close_btn = docre('button');
         close_btn.className = 'helper-close-btn';
@@ -1864,14 +1883,6 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     insertHelperLink();
 
-    let fl = GM_getValue('followed_users', []);
-    updateGMListElements(fl, { 'uid': GM_info.script.author, 'name': 'BK' }, true, (a, b) => a.uid == b.uid);
-    updateGMList('followed_users', fl);
-    let mft = GM_getValue(`${GM_info.script.author}_followed_threads`, []);
-    updateGMListElements(mft, { 'tid': -1, 'title': '所有回复', 'last_tpid': "3515791" }, true, (a, b) => a.tid == b.tid);
-    updateGMListElements(mft, { 'tid': 275789, 'title': '摘抄', 'last_tpid': "3515791" }, true, (a, b) => a.tid == b.tid);
-    updateGMList(`${GM_info.script.author}_followed_threads`, mft);
-
     const helper_setting = GM_getValue('helper_setting');
     if (typeof helper_setting === 'undefined') {
         GM.setValue('helper_setting', helper_default_setting);
@@ -1922,7 +1933,6 @@ label:has(.helper-toggle-switch)
 // TODO 代表作
 // TODO 辅助换行
 // TODO 上一集、下一集
-// TODO esc退出
 
 // 次优先
 // TODO 黑名单
