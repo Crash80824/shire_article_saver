@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6.5
+// @version      0.6.6.6
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -496,6 +496,10 @@ background-color: #758195;
 .helper-follow-table th, .helper-follow-table td {
   padding: 8px;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 10rem;
 }
 
 .helper-follow-table thead tr th {
@@ -1336,12 +1340,12 @@ background-color: white;
     function createFollowListTable() {
         const table = docre('table');
         table.className = 'helper-follow-table';
+        const table_head = docre('thead');
+        table.appendChild(table_head);
+        const title_row = table_head.insertRow();
+
         const followed_users = GM_getValue('followed_users', []);
         if (followed_users.length > 0) {
-            const table_head = docre('thead');
-            table.appendChild(table_head);
-
-            const title_row = table_head.insertRow();
             const user_title = docre('th');
             const thread_title = docre('th');
             const follow_title = docre('th');
@@ -1355,14 +1359,23 @@ background-color: white;
 
             for (let user of followed_users) {
                 const followed_threads = GM_getValue(user.uid + '_followed_threads', []);
+                const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+
+                if (followed_threads.some(e => e.tid == -1)) {
+                    const row = table_body.insertRow();
+                    const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
+
+                    insertLink(user.name, user_URL_params, user_cell);
+                    const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
+                    insertLink('所有回复', thread_URL_params, thread_cell);
+                    follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': -1, 'title': '所有回复' }));
+                    continue;
+                }
 
                 for (let thread of followed_threads) {
                     const row = table_body.insertRow();
-                    const user_cell = row.insertCell(0);
-                    const thread_cell = row.insertCell(1);
-                    const follow_cell = row.insertCell(2);
+                    const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
 
-                    const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
                     insertLink(user.name, user_URL_params, user_cell);
                     let thread_URL_params;
                     if (thread.tid > 0) {
@@ -1371,20 +1384,16 @@ background-color: white;
                     else if (thread.tid == 0) {
                         thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
                     }
-                    else if (thread.tid == -1) {
-                        thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
-                    }
-                    insertLink(thread.title, thread_URL_params, thread_cell, 10);
+
+                    insertLink(thread.title, thread_URL_params, thread_cell);
                     follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': thread.tid, 'title': thread.title }));
                 }
             }
         }
         else {
-            const row = table.insertRow();
-            const cell = row.insertCell();
-            cell.textContent = '暂无关注';
-            cell.style.textAlign = 'center';
-            cell.style.padding = '8px';
+            const no_follow = docre('th');
+            no_follow.textContent = '暂无关注';
+            title_row.appendChild(no_follow);
         }
         return table;
     }
