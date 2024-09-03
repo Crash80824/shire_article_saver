@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6.6
+// @version      0.6.6.7
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -134,33 +134,37 @@
     // ========================================================================================================
     // 自定义样式
     // ========================================================================================================
-    const nofication_popup_style = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        width: 300px;
-        background-color: rgba(0, 0, 0, 0.9);
-        color: white;
-        padding: 20px;
-        border-radius: 5px;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-        font-family: Arial, sans-serif;
-        z-index: 10000;
-    `;
-
-    const nofication_popup_close_btn_style = `
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background-color: transparent;
-        color: #ff5c5c;
-        border: none;
-        font-size: 20px;
-        font-weight: bold;
-        cursor: pointer;
-    `;
-
     GM_addStyle(`
+#helper-notification-popup {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 35%;
+  min-width: 300px;
+  max-height: 80%;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 20px;
+  border-radius: 5px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+}
+
+.helper-noti-message {
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.helper-ellip-link {
+  display: inline-block;
+  color: #004e83 !important;
+  overflow: hidden;
+  max-width: calc(min(70%, 30rem));
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+
 #helper-overlay {
   position: fixed;
   top: 0;
@@ -179,7 +183,7 @@
   width: 50%;
   min-width: 600px;
   min-height: 300px;
-  max-height: 50%;
+  max-height: 85%;
   background-color: white;
   color: black !important;
   border: 1px solid #ccc;
@@ -205,8 +209,7 @@
   flex: 1;
 }
 
-#helper-close-btn {
-  background: none;
+.helper-close-btn {
   border: none;
   cursor: pointer;
   margin-left: 10px;
@@ -215,10 +218,19 @@
   height: 30px;
   line-height: 30px;
   text-align: center;
+
   transition: background-color 0.3s;
 }
 
-#helper-close-btn:hover {
+.helper-close-btn {
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>');
+}
+
+.helper-close-btn.helper-redx {
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="red" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>');
+}
+
+.helper-close-btn:hover {
   background-color: #ddd;
 }
 
@@ -421,7 +433,8 @@ label:has(.helper-toggle-switch)
   transition: background-color 0.3s;
 }
 
-.helper-follow-button, .helper-followed-button {
+.helper-follow-button,
+.helper-followed-button {
   padding: 2px;
   width: 5.5rem;
   cursor: pointer;
@@ -432,19 +445,19 @@ label:has(.helper-toggle-switch)
 }
 
 .helper-follow-button {
-    background-color: #1772f6;
+  background-color: #1772f6;
 }
 
 .helper-follow-button:hover {
-background-color: #0063e6;
-    }
+  background-color: #0063e6;
+}
 
 .helper-followed-button {
-background-color: #8491a5;
+  background-color: #8491a5;
 }
 
 .helper-followed-button:hover {
-background-color: #758195;
+  background-color: #758195;
 }
 
 .helper-checkbox {
@@ -493,7 +506,8 @@ background-color: #758195;
   padding-top: 0 !important;
 }
 
-.helper-follow-table th, .helper-follow-table td {
+.helper-follow-table th,
+.helper-follow-table td {
   padding: 8px;
   text-align: center;
   white-space: nowrap;
@@ -503,10 +517,11 @@ background-color: #758195;
 }
 
 .helper-follow-table thead tr th {
-position: sticky;
-top: 0px;
-background-color: white;
-    }
+  position: sticky;
+  top: 0px;
+  padding-top: 10px;
+  background-color: white;
+}
     `);
 
 
@@ -1337,6 +1352,14 @@ background-color: white;
     // ========================================================================================================
     // 浮动弹窗相关
     // ========================================================================================================
+    function createCloseButton(onclick) {
+        const close_btn = docre('button');
+        close_btn.className = 'helper-close-btn';
+        close_btn.type = 'button';
+        close_btn.addEventListener('click', onclick);
+        return close_btn;
+    }
+
     function createFollowListTable() {
         const table = docre('table');
         table.className = 'helper-follow-table';
@@ -1402,11 +1425,8 @@ background-color: white;
         const div = docre('div');
         const notification_messages = GM_getValue('notification_messages', []);
         if (notification_messages.length > 0) {
-            for (let message of notification_messages) {
-                const p = docre('p');
-                p.innerHTML = message;
-                div.appendChild(p);
-            }
+            console.log(notification_messages);
+            notification_messages.forEach(message => { div.innerHTML += message; });
         }
         else {
             const p = docre('p');
@@ -1610,11 +1630,7 @@ background-color: white;
         helper_title.textContent = '湿热助手';
         helper_title_container.appendChild(helper_title);
 
-        const close_btn = docre('button');
-        close_btn.id = 'helper-close-btn';
-        close_btn.type = 'button';
-        close_btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-        close_btn.addEventListener('click', () => {
+        const close_btn = createCloseButton(() => {
             document.body.removeChild(popup);
             document.body.removeChild(overlay);
         });
@@ -1680,23 +1696,21 @@ background-color: white;
 
     function createNotificationPopup() {
         const popup = docre('div');
-        popup.id = 'nofication-popup';
-        popup.style = nofication_popup_style;
+        popup.id = 'helper-notification-popup';
         document.body.appendChild(popup);
 
-        const close_btn = docre('button');
-        close_btn.type = 'button';
-        close_btn.className = 'close-btn';
-        close_btn.style = nofication_popup_close_btn_style;
-        close_btn.onclick = () => { popup.style.display = 'none' };
-        close_btn.textContent = '✖';
+        const close_btn = createCloseButton(() => { popup.style.display = 'none' });
+        close_btn.style.position = 'absolute';
+        close_btn.style.top = '10px';
+        close_btn.style.right = '10px';
+        close_btn.classList.add('helper-redx');
         popup.appendChild(close_btn);
     }
 
     async function updateNotificationPopup() {
         const followed_users = await GM.getValue('followed_users', []);
         if (followed_users.length > 0) {
-            let popup = qS('#nofication-popup');
+            let popup = qS('#helper-notification-popup');
             let notification_messages = [];
             let promises = [];
             for (let user of followed_users) {
@@ -1718,15 +1732,18 @@ background-color: white;
 
                         if (!popup) {
                             createNotificationPopup();
-                            popup = qS('#nofication-popup');
+                            popup = qS('#helper-notification-popup');
                         }
 
                         function createParaAndInsertUserNameLink(uid, parent) {
-                            const messageElement = docre('p');
+                            const messageElement = docre('div');
+                            messageElement.className = 'helper-noti-message';
                             parent.appendChild(messageElement);
                             const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid };
                             const user_link = insertLink(user.name, user_URL_params, messageElement);
-                            user_link.style.color = 'inherit'
+                            user_link.className = 'helper-ellip-link';
+                            user_link.style.maxWidth = '30%';
+                            user_link.style.color = 'inherit !important';
                             return messageElement;
                         }
 
@@ -1743,7 +1760,8 @@ background-color: white;
                                 const text_element = document.createTextNode(message);
                                 messageElement.appendChild(text_element);
                                 const thread_URL_params = { 'loc': 'forum', 'mod': 'redirect', 'goto': 'findpost', 'ptid': new_thread.tid, 'pid': new_thread.pids.at(-1) };
-                                insertLink(thread_title, thread_URL_params, messageElement, 10);
+                                const thread_message = insertLink(thread_title, thread_URL_params, messageElement);
+                                thread_message.className = 'helper-ellip-link';
                             }
                             if (!found_last && thread.tid == -1) { // 在空间回复页首页未找到不晚于last_pid的
                                 const messageElement = createParaAndInsertUserNameLink(user.uid, div);
@@ -1760,7 +1778,8 @@ background-color: white;
                                 const text_element = document.createTextNode(' 有新帖 ');
                                 messageElement.appendChild(text_element);
                                 const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_threads[i].tid };
-                                insertLink(new_threads[i].title, thread_URL_params, messageElement, 20);
+                                const thread_message = insertLink(new_threads[i].title, thread_URL_params, messageElement);
+                                thread_message.className = 'helper-ellip-link';
                             }
                             if (new_threads.length > 3) {
                                 const messageElement = createParaAndInsertUserNameLink(user.uid, div);
@@ -1845,6 +1864,14 @@ background-color: white;
     // ========================================================================================================
     insertHelperLink();
 
+    let fl = GM_getValue('followed_users', []);
+    updateGMListElements(fl, { 'uid': GM_info.script.author, 'name': 'BK' }, true, (a, b) => a.uid == b.uid);
+    updateGMList('followed_users', fl);
+    let mft = GM_getValue(`${GM_info.script.author}_followed_threads`, []);
+    updateGMListElements(mft, { 'tid': -1, 'title': '所有回复', 'last_tpid': "3515791" }, true, (a, b) => a.tid == b.tid);
+    updateGMListElements(mft, { 'tid': 275789, 'title': '摘抄', 'last_tpid': "3515791" }, true, (a, b) => a.tid == b.tid);
+    updateGMList(`${GM_info.script.author}_followed_threads`, mft);
+
     const helper_setting = GM_getValue('helper_setting');
     if (typeof helper_setting === 'undefined') {
         GM.setValue('helper_setting', helper_default_setting);
@@ -1895,12 +1922,12 @@ background-color: white;
 // TODO 代表作
 // TODO 辅助换行
 // TODO 上一集、下一集
+// TODO esc退出
 
 // 次优先
 // TODO 黑名单
 // TODO 一键删除
 // TODO 跳过题图
-
 
 // 末优先
 // TODO 用户改名提醒
@@ -1913,7 +1940,6 @@ background-color: white;
 // 热更新
 // TODO debug log
 // TODO 异常处理
-// TODO style处理
 // TODO 关注按钮联动
 
 // 调试
@@ -1921,15 +1947,14 @@ background-color: white;
 // TODO 删除键值
 
 // 美化
-// TODO 关注列表样式
-// TODO noti弹窗样式美化
-// TODO set弹窗content样式
-// TODO 关闭按钮居中
+// TODO 下载按钮
+// TODO 主题页多选
 
 // 优化
 // insertHelperLink
 // checked_posts
 // firefox
+// hover text
 
 // 搁置
 // TODO 上传表情
