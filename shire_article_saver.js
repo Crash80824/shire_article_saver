@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6.4
+// @version      0.6.6.5
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -16,7 +16,7 @@
 // @grant        GM_deleteValue
 // @grant        GM.listValues
 // @grant        GM_listValues
-// @grant        GM.addStyle
+// @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // @grant        GM.download
 // @downloadURL https://update.greasyfork.org/scripts/461311/shire%20helper.user.js
@@ -160,7 +160,7 @@
         cursor: pointer;
     `;
 
-    GM.addStyle(`
+    GM_addStyle(`
 #helper-overlay {
   position: fixed;
   top: 0;
@@ -179,7 +179,7 @@
   width: 50%;
   min-width: 600px;
   min-height: 300px;
-  max-height: 80%;
+  max-height: 50%;
   background-color: white;
   color: black !important;
   border: 1px solid #ccc;
@@ -267,7 +267,7 @@
 
 #helper-tab-content-container {
   flex: 1;
-  padding: 20px;
+  padding: 10px;
   font-size: 0.75rem;
 }
 
@@ -421,20 +421,9 @@ label:has(.helper-toggle-switch)
   transition: background-color 0.3s;
 }
 
-.helper-follow-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.helper-follow-table th, .helper-follow-table td {
-  padding: 8px;
-  text-align: center;
-}
-
 .helper-follow-button, .helper-followed-button {
-  margin: 5px;
   padding: 2px;
-  width: 6rem;
+  width: 5.5rem;
   cursor: pointer;
   border: none;
   border-radius: 8px;
@@ -494,6 +483,26 @@ background-color: #758195;
   display: flex;
   align-items: center;
 }
+
+.helper-follow-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.helper-scroll-component:has(.helper-follow-table) {
+  padding-top: 0 !important;
+}
+
+.helper-follow-table th, .helper-follow-table td {
+  padding: 8px;
+  text-align: center;
+}
+
+.helper-follow-table thead tr th {
+position: sticky;
+top: 0px;
+background-color: white;
+    }
     `);
 
 
@@ -1202,8 +1211,6 @@ background-color: #758195;
             const uid = post_info.post_auth_id;
 
             const label = docre('label');
-            qS('tbody > tr:nth-child(1) > td.pls > div', post).appendChild(label);
-
             const checkbox = docre('input');
             checkbox.id = 'post_check_' + pid;
             checkbox.className = 'helper-checkbox';
@@ -1218,12 +1225,14 @@ background-color: #758195;
 
             all_checked = all_checked && checkbox.checked;
 
-            const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
-            profile_icon.appendChild(createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': 0 }));
-            const user_message = qS('[id^=favatar] > ul.xl', post)
+            const user_card = qS('tbody > tr:nth-child(1) > td.pls > div', post)
             const post_follow_btn = createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': tid, 'title': thread_title });
             post_follow_btn.classList.add('o');
-            insertElement(post_follow_btn, user_message, 'insertAfter');
+            user_card.appendChild(post_follow_btn);
+            user_card.appendChild(label);
+
+            const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
+            profile_icon.appendChild(createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': 0 }));
         }
 
         const label = docre('label');
@@ -1329,22 +1338,26 @@ background-color: #758195;
         table.className = 'helper-follow-table';
         const followed_users = GM_getValue('followed_users', []);
         if (followed_users.length > 0) {
-            const title_row = table.insertRow();
+            const table_head = docre('thead');
+            table.appendChild(table_head);
+
+            const title_row = table_head.insertRow();
             const user_title = docre('th');
             const thread_title = docre('th');
             const follow_title = docre('th');
             user_title.textContent = '用户';
             thread_title.textContent = '关注内容';
             follow_title.textContent = '操作';
-            title_row.appendChild(user_title);
-            title_row.appendChild(thread_title);
-            title_row.appendChild(follow_title);
+            [user_title, thread_title, follow_title].forEach(e => title_row.appendChild(e));
+
+            const table_body = docre('tbody');
+            table.appendChild(table_body);
 
             for (let user of followed_users) {
                 const followed_threads = GM_getValue(user.uid + '_followed_threads', []);
 
                 for (let thread of followed_threads) {
-                    const row = table.insertRow();
+                    const row = table_body.insertRow();
                     const user_cell = row.insertCell(0);
                     const thread_cell = row.insertCell(1);
                     const follow_cell = row.insertCell(2);
@@ -1892,6 +1905,7 @@ background-color: #758195;
 // TODO debug log
 // TODO 异常处理
 // TODO style处理
+// TODO 关注按钮联动
 
 // 调试
 // TODO 导出关注
@@ -1906,10 +1920,12 @@ background-color: #758195;
 // 优化
 // insertHelperLink
 // checked_posts
+// firefox
 
 // 搁置
 // TODO 上传表情
 // TODO 表情代码
 // TODO 置顶重复
 // TODO 无选中时会下载空文件
+// TODO sticky
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
