@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.0.1
+// @version      0.7.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -51,6 +51,8 @@
 
     const helper_default_setting = {
         'enable_notification': true,
+        'max_noti_threads': 3,
+        'important_fids': ['78'],
         'enable_history': true,
         'enable_text_download': true,
         'enable_attach_download': true,
@@ -1016,8 +1018,8 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     async function getUserNewestPostOrThread(uid, tid, last_tpid = 0) {
         // 返回结构：
-        // { 'new': [{ 'tid': tid, 'title': title, 'pids': [] }], 'found': found, 'last_tpid': last_tpid }
-        // 其中对于对于tid=0的情况，pids为undefined
+        // { 'new': [{ 'tid': tid, 'title': title, 'pids': [],'fid':fid }], 'found': found, 'last_tpid': last_tpid }
+        // 其中对于对于tid=0的情况，pids为undefined; 对于tid!=0的情况，fid为undefined
         if (tid == 0) {
             return getUserNewestThread(uid, last_tpid);
         }
@@ -1078,7 +1080,8 @@ label:has(.helper-toggle-switch)
                     break;
                 }
                 const title = qS('a:nth-child(2) > div > em', thread).textContent;
-                new_threads.push({ 'tid': tid, 'title': title });
+                const fid = qS('li.mr > a', thread).href.parseURL().fid;
+                new_threads.push({ 'tid': tid, 'title': title, 'fid': fid });
                 if (last_tid == 0) {
                     break;
                 }
@@ -1862,7 +1865,7 @@ label:has(.helper-toggle-switch)
                 let followed_threads = GM_getValue(user.uid + '_followed_threads', []);
                 for (let thread of followed_threads) {
                     promises.push(getUserNewestPostOrThread(user.uid, thread.tid, thread.last_tpid).then(new_infos => {
-                        const new_threads = new_infos.new;
+                        let new_threads = new_infos.new;
                         const found_last = new_infos.found;
                         const last_tpid = new_infos.last_tpid;
 
@@ -1917,14 +1920,20 @@ label:has(.helper-toggle-switch)
                             }
                         }
                         else if (thread.tid == 0) {
-                            const notif_num = new_threads.length > 3 ? 3 : new_threads.length;
-                            for (let i = 0; i < notif_num; i++) {
+                            const noti_threads = new_threads.filter(e => hs.important_fids.includes(e.fid));
+                            hs.important_fids.forEach(fid => { new_threads = new_threads.filter(e => e.fid != fid) });
+                            const notif_num = new_threads.length > hs.max_noti_threads ? hs.max_noti_threads : new_threads.length;
+                            noti_threads.push(...new_threads.slice(0, notif_num));
+                            for (let new_thread of noti_threads) {
                                 const messageElement = createParaAndInsertUserNameLink(user.uid, div);
                                 const text_element = document.createTextNode(' 有新帖 ');
                                 messageElement.appendChild(text_element);
-                                const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_threads[i].tid };
-                                const thread_message = insertLink(new_threads[i].title, thread_URL_params, messageElement);
+                                const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_thread.tid };
+                                const thread_message = insertLink(new_thread.title, thread_URL_params, messageElement);
                                 thread_message.className = 'helper-ellip-link';
+                                if (hs.important_fids.includes(new_thread.fid)) {
+                                    thread_message.style = 'color: red !important';
+                                }
                             }
                             if (new_threads.length > 3) {
                                 const messageElement = createParaAndInsertUserNameLink(user.uid, div);
@@ -2009,6 +2018,13 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     insertHelperLink();
 
+    let fl = GM_getValue('followed_users', []);
+    updateGMListElements(fl, { 'uid': '143728', 'name': '打虎上山12345' }, true, (a, b) => a.uid == b.uid);
+    updateGMList('followed_users', fl);
+    let mft = GM_getValue(`${GM_info.script.author}_followed_threads`, []);
+    updateGMListElements(mft, { 'tid': 0, 'title': '所有主题', 'last_tpid': "203433" }, true, (a, b) => a.tid == b.tid);
+    updateGMList(`143728_followed_threads`, mft);
+
     const hs = GM_getValue('helper_setting', {});
     let default_update = false;
     for (let key in helper_default_setting) {
@@ -2053,7 +2069,6 @@ label:has(.helper-toggle-switch)
 })();
 
 // 最优先
-// TODO 站务着色
 // TODO 版面浮动名片、好友浮动名片添加关注
 // TODO 代表作
 // TODO 合并保存选项
@@ -2082,6 +2097,7 @@ label:has(.helper-toggle-switch)
 
 // 更多设置
 // TODO 换行参数
+// TODO 提醒参数
 
 // 调试
 // TODO 导出关注
