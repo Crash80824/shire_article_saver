@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.6.6.9
+// @version      0.7.0
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -58,6 +58,7 @@
         'files_pack_mode': 'no',
         'default_merge_mode': 'main',
         'enable_auto_reply': true,
+        'enable_auto_wrap': true,
         'auto_reply_message': '收藏了，谢谢楼主分享！'
     };
 
@@ -802,8 +803,6 @@ label:has(.helper-toggle-switch)
         let title = target.title;
         const is_blob = Boolean(target.is_blob);
 
-        console.log('e', new Date().toISOString());
-
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -811,7 +810,6 @@ label:has(.helper-toggle-switch)
                 responseType: 'blob',
                 onload: response => {
                     const content_type = response.responseHeaders.match(/Content-Type: (.+)/i);
-                    console.log('f', new Date().toISOString());
                     let ext = 'unknown';
                     if (content_type && content_type[1]) {
                         ext = extensionMap[content_type[1]] || 'unknown';
@@ -830,18 +828,15 @@ label:has(.helper-toggle-switch)
                         else {
                             const reader = new FileReader();
                             reader.readAsDataURL(blob);
-                            console.log('g', new Date().toISOString());
                             reader.onload = () => {
                                 const a = docre('a');
                                 a.download = `${title}.${ext}`;
                                 a.href = reader.result;
                                 a.click();
-                                console.log('h', new Date().toISOString());
                             }
                             const revokeURL = () => is_blob ? URL.revokeObjectURL(url) : null;
                             reader.onloadend = revokeURL;
                             resolve();
-                            console.log('i', new Date().toISOString());
                         }
                     }
                 }
@@ -881,8 +876,6 @@ label:has(.helper-toggle-switch)
 
         let download_list = []
 
-        console.log('b', new Date().toISOString());
-
         if (helper_setting.enable_text_download) {
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
@@ -902,12 +895,9 @@ label:has(.helper-toggle-switch)
             download_list.push({ 'list': op, 'name': '原创资源保护' });
         }
 
-        console.log('c', new Date().toISOString());
-
         switch (helper_setting.files_pack_mode) {
             case 'no':
                 download_list.forEach(target => target.list.forEach(e => downloadFromURL(e)));
-                console.log('d', new Date().toISOString());
                 break;
             case 'single':
                 download_list.forEach(target => createZipAndDownloadFromURLs(`${filename}_${target.name}`, target.list));
@@ -927,7 +917,6 @@ label:has(.helper-toggle-switch)
             let text = file_info;
             let content = await getPageContent(document, 'main');
             text += content.text;
-            console.log('a', new Date().toISOString());
             saveFile(title_name, text, content.attach, content.op);
         }
         else {
@@ -1129,7 +1118,7 @@ label:has(.helper-toggle-switch)
     function insertHelperLink() {
         let target_menu = qS('#myitem')
         if (target_menu) {
-            const helper_setting_link = insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
+            const helper_setting_link = insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperPopup() } }, target_menu, 'insertBefore');
             helper_setting_link.id = 'helper_setting';
             const span = docre('span');
             span.textContent = ' | ';
@@ -1141,7 +1130,7 @@ label:has(.helper-toggle-switch)
         target_menu = qS('#myspace');
         if (target_menu) {
             target_menu = qS('#myspace')
-            insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperSettingPopup() } }, target_menu, 'insertBefore');
+            insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperPopup() } }, target_menu, 'insertBefore');
             return;
         }
     }
@@ -1154,7 +1143,12 @@ label:has(.helper-toggle-switch)
                 pos.parentNode.insertBefore(elem, pos);
                 break;
             case 'insertAfter':
-                pos.parentNode.insertBefore(elem, pos.nextSibling);
+                if (pos.nextSibling) {
+                    pos.parentNode.insertBefore(elem, pos.nextSibling);
+                }
+                else {
+                    pos.parentNode.appendChild(elem);
+                }
                 break;
         }
     }
@@ -1250,7 +1244,87 @@ label:has(.helper-toggle-switch)
         return follow_btn;
     }
 
-    async function updatePostInPage() {
+    function addWrapInNode(root, min_para_length, para_length, max_para_length, dot_char, comma_char) {
+        const find_break = text => {
+            for (let i = para_length; i < Math.min(text.length, max_para_length); i++) {
+                if (dot_char.includes(text[i])) {
+                    return i;
+                }
+            }
+            if (text.length > max_para_length) {
+                for (let i = max_para_length; i < text.length; i++) {
+                    if (comma_char.includes(text[i])) {
+                        return i;
+                    }
+                }
+            }
+            return -1;
+        };
+
+        let iter = document.createNodeIterator(root, NodeFilter.SHOW_TEXT, null, false);
+        let node = iter.nextNode();
+        while (node) {
+            let text = node.nodeValue;
+
+            let break_index;
+            if (text.length > para_length) {
+                break_index = find_break(text);
+            }
+
+            if (break_index > 0) {
+                let text1 = text.slice(0, break_index + 1);
+                let text2 = text.slice(break_index + 1);
+                if (text2.trim().length > min_para_length) {
+                    node.nodeValue = "";
+                    let new_node1 = document.createTextNode(text1);
+                    let br = docre('br');
+                    br.setAttribute('data-hbr', 'auto-wrap');
+                    let new_node2 = document.createTextNode(text2);
+                    insertElement(new_node2, node, 'insertAfter');
+                    insertElement(br, new_node2);
+                    insertElement(new_node1, br);
+                    let current_node = node;
+
+                    node = iter.nextNode();
+                    node = iter.nextNode();
+                    node.parentNode.removeChild(current_node);
+                    continue;
+                }
+            }
+            node = iter.nextNode();
+        }
+
+        iter = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, { acceptNode: node => node.tagName == 'BR' }, false);
+        node = iter.nextNode();
+        while (node) {
+            let previous_in_multi_br = false;
+            let last_in_multi_br = false;
+            while (node) {
+                if (node.nextSibling) {
+                    const next = node.nextSibling;
+                    const next_is_br = next.tagName == 'BR';
+                    const next_is_space = next.nodeType == Node.TEXT_NODE && next.nodeValue.trim() == "";
+                    const nnext_is_br = next.nextSibling && next.nextSibling.tagName == 'BR';
+                    const nnext_is_newline = next.nextSibling && next.nextSibling.nodeType == Node.TEXT_NODE && next.nextSibling.nodeValue.trim() != "";
+                    previous_in_multi_br = next_is_br || next_is_space && (nnext_is_br || nnext_is_newline);
+                    if (previous_in_multi_br) {
+                        node = iter.nextNode();
+                        last_in_multi_br = true;
+                        continue;
+                    }
+                }
+                break;
+            }
+            if (!previous_in_multi_br && !last_in_multi_br) {
+                const br = docre('br');
+                br.setAttribute('data-hbr', 'before-single-br');
+                insertElement(br, node);
+            }
+            node = iter.nextNode();
+        }
+    }
+
+    async function modifyPostInPage() {
         const tid = location.href.parseURL().tid;
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
         const posts_in_page = getPostsInPage();
@@ -1285,6 +1359,11 @@ label:has(.helper-toggle-switch)
 
             const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
             profile_icon.appendChild(createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': 0 }));
+
+            if (helper_setting.enable_auto_wrap) {
+                const post_content = qS('[id^=postmessage]', post);
+                addWrapInNode(post_content, 100, 200, 300, ['.', '。', '？', '?', '!', '！'], [',', '，', '、', ';', '；']);
+            }
         }
 
         const label = docre('label');
@@ -1331,7 +1410,7 @@ label:has(.helper-toggle-switch)
         const author = getThreadAuthorInfo();
         const is_only_author = location.href.parseURL().authorid == author.id;
 
-        updatePostInPage();
+        modifyPostInPage();
 
         const saveFunc = (type = 'main') => async () => {
             saveThread(type);
@@ -1624,6 +1703,8 @@ label:has(.helper-toggle-switch)
         // 选择文件打包模式
         components.push({ 'title': '归档保存方式', 'type': 'select', 'args': ['files_pack_mode', ['no', 'single', 'all'], ['不归档', '分类归档', '全部归档']] });
 
+        components.push({ 'title': '自动换行', 'type': 'switch', 'args': ['enable_auto_wrap'] });
+
         // 选择默认合并下载模式
 
         // 清除历史消息
@@ -1669,7 +1750,7 @@ label:has(.helper-toggle-switch)
         return div;
     }
 
-    function createHelperSettingPopup() {
+    function createHelperPopup() {
         const overlay = docre('div');
         overlay.id = 'helper-overlay';
         overlay.addEventListener('click', () => {
@@ -1967,36 +2048,35 @@ label:has(.helper-toggle-switch)
 })();
 
 // 最优先
-// TODO 合并保存选项
-// TODO 下载进度条
-// TODO 自动回复
-// TODO 保证弹窗弹出
 // TODO 站务着色
 // TODO 版面浮动名片、好友浮动名片添加关注
-// TODO 图片预览
+// TODO 代表作
+// TODO 合并保存选项
+// TODO 自动回复
 // TODO op未加载的情况
 // TODO tg详情
-// TODO 代表作
-// TODO 辅助换行
-// TODO 上一集、下一集
+// TODO chrome支持
 
 // 次优先
+// TODO 屏蔽词
 // TODO 黑名单
 // TODO 一键删除
-// TODO 跳过题图
 
 // 末优先
 // TODO 用户改名提醒
-// TODO 辅助换行
-// TODO md格式
-// TODO 纯文本分割线样式
-// TODO NSFW
-
+// TODO NSFW（跳过题图）
+// TODO 图片预览
 
 // 热更新
+// TODO 保证弹窗弹出
 // TODO debug log
 // TODO 异常处理
 // TODO 关注按钮联动
+// TODO 按钮hover
+// TODO 动态tab
+
+// 更多设置
+// TODO 换行参数
 
 // 调试
 // TODO 导出关注
@@ -2007,11 +2087,21 @@ label:has(.helper-toggle-switch)
 // checked_posts
 // firefox
 // hover text
+// innertext
 
-// 搁置
+// 搁置: 不会
 // TODO 上传表情
 // TODO 表情代码
+// TODO sticky
+
+// 搁置: 麻烦
 // TODO 置顶重复
 // TODO 无选中时会下载空文件
-// TODO sticky
+// TODO md格式
+// TODO 下载进度条
+
+// 搁置：负载
+// TODO 上一集、下一集
+
+
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
