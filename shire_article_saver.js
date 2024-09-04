@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.0
+// @version      0.7.0.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -58,8 +58,13 @@
         'files_pack_mode': 'no',
         'default_merge_mode': 'main',
         'enable_auto_reply': true,
+        'auto_reply_message': '收藏了，谢谢楼主分享！',
         'enable_auto_wrap': true,
-        'auto_reply_message': '收藏了，谢谢楼主分享！'
+        'min_wrap_length': 100,
+        'typical_wrap_length': 200,
+        'max_wrap_length': 300,
+        'wrap_dot': '.。？?!！',
+        'wrap_comma': ',，、;；'
     };
 
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
@@ -868,7 +873,7 @@ label:has(.helper-toggle-switch)
     }
 
     async function saveFile(filename, text, attach = [], op = []) {
-        const something_to_save = helper_setting.enable_text_download || (helper_setting.enable_attach_download && attach.length > 0) || (helper_setting.enable_op_download && op.length > 0);
+        const something_to_save = hs.enable_text_download || (hs.enable_attach_download && attach.length > 0) || (hs.enable_op_download && op.length > 0);
         if (!something_to_save) {
             alert('没有需要保存的内容, 请检查设置.');
             return;
@@ -876,13 +881,13 @@ label:has(.helper-toggle-switch)
 
         let download_list = []
 
-        if (helper_setting.enable_text_download) {
+        if (hs.enable_text_download) {
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             download_list.push({ 'list': [{ 'url': url, 'title': filename, 'is_blob': true }], 'name': '正文' });
         }
 
-        if (helper_setting.enable_attach_download) {
+        if (hs.enable_attach_download) {
             attach.forEach((e, i) => {
                 e.url = location.origin + '/main/' + e.url;
                 e.title = e.title || `${i + 1}`;
@@ -891,11 +896,11 @@ label:has(.helper-toggle-switch)
             download_list.push({ 'list': attach, 'name': '附件' });
         }
 
-        if (helper_setting.enable_op_download) {
+        if (hs.enable_op_download) {
             download_list.push({ 'list': op, 'name': '原创资源保护' });
         }
 
-        switch (helper_setting.files_pack_mode) {
+        switch (hs.files_pack_mode) {
             case 'no':
                 download_list.forEach(target => target.list.forEach(e => downloadFromURL(e)));
                 break;
@@ -995,7 +1000,7 @@ label:has(.helper-toggle-switch)
     }
 
     function autoReply() {
-        const reply_text = helper_setting.auto_reply_message;
+        const reply_text = hs.auto_reply_message;
         const reply_textarea = qS('#fastpostmessage');
         if (reply_textarea) {
             reply_textarea.value = reply_text;
@@ -1360,9 +1365,9 @@ label:has(.helper-toggle-switch)
             const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
             profile_icon.appendChild(createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': 0 }));
 
-            if (helper_setting.enable_auto_wrap) {
+            if (hs.enable_auto_wrap) {
                 const post_content = qS('[id^=postmessage]', post);
-                addWrapInNode(post_content, 100, 200, 300, ['.', '。', '？', '?', '!', '！'], [',', '，', '、', ';', '；']);
+                addWrapInNode(post_content, hs.min_wrap_length, hs.typical_wrap_length, hs.max_wrap_length, hs.wrap_dot, hs.wrap_comma);
             }
         }
 
@@ -1414,7 +1419,7 @@ label:has(.helper-toggle-switch)
 
         const saveFunc = (type = 'main') => async () => {
             saveThread(type);
-            // if (helper_setting.auto_reply) {
+            // if (hs.auto_reply) {
             //     autoReply();
             // }
         };
@@ -1460,8 +1465,8 @@ label:has(.helper-toggle-switch)
             const label = docre('label');
             const checkbox = docre('input');
             checkbox.type = 'checkbox';
-            checkbox.checked = helper_setting.enable_debug_mode;
-            checkbox.addEventListener('change', () => { helper_setting.enable_debug_mode = checkbox.checked; GM.setValue('helper_setting', helper_setting); });
+            checkbox.checked = hs.enable_debug_mode;
+            checkbox.addEventListener('change', () => { hs.enable_debug_mode = checkbox.checked; GM.setValue('helper_setting', hs); });
             const text = document.createTextNode('调试模式');
             label.appendChild(checkbox);
             label.appendChild(text);
@@ -1586,7 +1591,7 @@ label:has(.helper-toggle-switch)
     }
 
     function createHelperSettingSelect(attr, options = [], texts = []) {
-        const status = helper_setting[attr];
+        const status = hs[attr];
         if (options.length == 0) {
             options = [status];
         }
@@ -1604,8 +1609,8 @@ label:has(.helper-toggle-switch)
         });
 
         select.addEventListener('change', (e) => {
-            helper_setting[attr] = e.target.value;
-            GM.setValue('helper_setting', helper_setting);
+            hs[attr] = e.target.value;
+            GM.setValue('helper_setting', hs);
         });
 
         return select;
@@ -1616,10 +1621,10 @@ label:has(.helper-toggle-switch)
 
         const checkbox = docre('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = helper_setting[attr];
+        checkbox.checked = hs[attr];
         checkbox.addEventListener('change', (e) => {
-            helper_setting[attr] = e.target.checked;
-            GM.setValue('helper_setting', helper_setting);
+            hs[attr] = e.target.checked;
+            GM.setValue('helper_setting', hs);
         });
         label.appendChild(checkbox);
 
@@ -1640,10 +1645,10 @@ label:has(.helper-toggle-switch)
 
             const checkbox = docre('input');
             checkbox.type = 'checkbox';
-            checkbox.checked = helper_setting[option.attr];
+            checkbox.checked = hs[option.attr];
             checkbox.addEventListener('change', (e) => {
-                helper_setting[option.attr] = e.target.checked;
-                GM.setValue('helper_setting', helper_setting);
+                hs[option.attr] = e.target.checked;
+                GM.setValue('helper_setting', hs);
             });
             item.appendChild(checkbox);
 
@@ -1708,7 +1713,7 @@ label:has(.helper-toggle-switch)
         // 选择默认合并下载模式
 
         // 清除历史消息
-        if (helper_setting.enable_history) {
+        if (hs.enable_history) {
             components.push({
                 'title': '清空历史通知', 'type': 'button', 'args': ['全部清空', () => {
                     const confirm = window.confirm('确定清空所有历史通知？');
@@ -1795,13 +1800,13 @@ label:has(.helper-toggle-switch)
         content_container.appendChild(tab_content_container);
 
         const tabs = [{ 'name': '设置', 'func': createHelperSettingTable }];
-        if (helper_setting.enable_notification) {
+        if (hs.enable_notification) {
             tabs.push({ 'name': '关注列表', 'func': createFollowListTable });
         }
-        if (helper_setting.enable_history) {
+        if (hs.enable_history) {
             tabs.push({ 'name': '历史消息', 'func': createHistoryNotificationTable });
         }
-        if (helper_setting.enable_debug_mode) {
+        if (hs.enable_debug_mode) {
             tabs.push({ 'name': '调试', 'func': createDebugTable });
         }
 
@@ -1941,7 +1946,7 @@ label:has(.helper-toggle-switch)
                 }
             }
 
-            if (helper_setting.enable_history) {
+            if (hs.enable_history) {
                 await Promise.all(promises);
                 const old_notification_messages = GM_getValue('notification_messages', []);
                 notification_messages = notification_messages.concat(old_notification_messages);
@@ -2004,19 +2009,19 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     insertHelperLink();
 
-    const helper_setting = GM_getValue('helper_setting', {});
+    const hs = GM_getValue('helper_setting', {});
     let default_update = false;
     for (let key in helper_default_setting) {
-        if (!(key in helper_setting)) {
-            helper_setting[key] = helper_default_setting[key];
+        if (!(key in hs)) {
+            hs[key] = helper_default_setting[key];
             default_update = true;
         }
     }
     if (default_update) {
-        GM.setValue('helper_setting', helper_setting);
+        GM.setValue('helper_setting', hs);
     }
 
-    if (helper_setting.enable_notification) {
+    if (hs.enable_notification) {
         updateNotificationPopup();
     }
 
