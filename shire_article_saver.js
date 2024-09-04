@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.1
+// @version      0.7.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -61,12 +61,13 @@
         'default_merge_mode': 'main',
         'enable_auto_reply': true,
         'auto_reply_message': '收藏了，谢谢楼主分享！',
-        'enable_auto_wrap': true,
+        'enable_auto_wrap': false,
         'min_wrap_length': 100,
         'typical_wrap_length': 200,
         'max_wrap_length': 300,
         'wrap_dot': '.。？?!！',
-        'wrap_comma': ',，、;；'
+        'wrap_comma': ',，、;；',
+        'data-cache-time': 168 * 3600 * 1000
     };
 
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
@@ -599,7 +600,7 @@ label:has(.helper-toggle-switch)
     // 若tid==-1, 则关注用户的所有回复
     function recordFollow(info, followed) {
         let followed_threads = GM_getValue(info.uid + '_followed_threads', []);
-        updateGMListElements(followed_threads, { "tid": info.tid, 'title': info.title, "last_tpid": 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
+        updateGMListElements(followed_threads, { 'tid': info.tid, 'title': info.title, 'last_tpid': 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
         updateGMList(info.uid + '_followed_threads', followed_threads);
 
         let followed_users = GM_getValue('followed_users', []);
@@ -1252,15 +1253,15 @@ label:has(.helper-toggle-switch)
         return follow_btn;
     }
 
-    function addWrapInNode(root, min_para_length, para_length, max_para_length, dot_char, comma_char) {
+    function addWrapInNode(root, min_wrap_length = hs.min_wrap_length, wrap_length = hs.typical_wrap_length, max_wrap_length = hs.max_wrap_length, dot_char = hs.wrap_dot, comma_char = hs.wrap_comma) {
         const find_break = text => {
-            for (let i = para_length; i < Math.min(text.length, max_para_length); i++) {
+            for (let i = wrap_length; i < Math.min(text.length, max_wrap_length); i++) {
                 if (dot_char.includes(text[i])) {
                     return i;
                 }
             }
-            if (text.length > max_para_length) {
-                for (let i = max_para_length; i < text.length; i++) {
+            if (text.length > max_wrap_length) {
+                for (let i = max_wrap_length; i < text.length; i++) {
                     if (comma_char.includes(text[i])) {
                         return i;
                     }
@@ -1275,15 +1276,15 @@ label:has(.helper-toggle-switch)
             let text = node.nodeValue;
 
             let break_index;
-            if (text.length > para_length) {
+            if (text.length > wrap_length) {
                 break_index = find_break(text);
             }
 
             if (break_index > 0) {
                 let text1 = text.slice(0, break_index + 1);
                 let text2 = text.slice(break_index + 1);
-                if (text2.trim().length > min_para_length) {
-                    node.nodeValue = "";
+                if (text2.trim().length > min_wrap_length) {
+                    node.nodeValue = '';
                     let new_node1 = document.createTextNode(text1);
                     let br = docre('br');
                     br.setAttribute('data-hbr', 'auto-wrap');
@@ -1311,9 +1312,9 @@ label:has(.helper-toggle-switch)
                 if (node.nextSibling) {
                     const next = node.nextSibling;
                     const next_is_br = next.tagName == 'BR';
-                    const next_is_space = next.nodeType == Node.TEXT_NODE && next.nodeValue.trim() == "";
+                    const next_is_space = next.nodeType == Node.TEXT_NODE && next.nodeValue.trim() == '';
                     const nnext_is_br = next.nextSibling && next.nextSibling.tagName == 'BR';
-                    const nnext_is_newline = next.nextSibling && next.nextSibling.nodeType == Node.TEXT_NODE && next.nextSibling.nodeValue.trim() != "";
+                    const nnext_is_newline = next.nextSibling && next.nextSibling.nodeType == Node.TEXT_NODE && next.nextSibling.nodeValue.trim() != '';
                     previous_in_multi_br = next_is_br || next_is_space && (nnext_is_br || nnext_is_newline);
                     if (previous_in_multi_br) {
                         node = iter.nextNode();
@@ -1370,7 +1371,7 @@ label:has(.helper-toggle-switch)
 
             if (hs.enable_auto_wrap) {
                 const post_content = qS('[id^=postmessage]', post);
-                addWrapInNode(post_content, hs.min_wrap_length, hs.typical_wrap_length, hs.max_wrap_length, hs.wrap_dot, hs.wrap_comma);
+                addWrapInNode(post_content);
             }
         }
 
@@ -1431,14 +1432,14 @@ label:has(.helper-toggle-switch)
             insertInteractiveLink('保存主楼  ', saveFunc(), qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
 
             if (is_only_author) {
-                insertInteractiveLink('保存作者  ', saveFunc("page"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+                insertInteractiveLink('保存作者  ', saveFunc('page'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
             }
             else {
-                insertInteractiveLink('保存全帖  ', saveFunc("page"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+                insertInteractiveLink('保存全帖  ', saveFunc('page'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
             }
         }
 
-        insertInteractiveLink('保存选中  ', saveFunc("checked"), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+        insertInteractiveLink('保存选中  ', saveFunc('checked'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 
     async function modifySpacePage() {
@@ -1619,7 +1620,7 @@ label:has(.helper-toggle-switch)
         return select;
     }
 
-    function createHelperSettingSwitch(attr) {
+    function createHelperSettingSwitch(attr, onchange = null) {
         const label = docre('label');
 
         const checkbox = docre('input');
@@ -1628,6 +1629,9 @@ label:has(.helper-toggle-switch)
         checkbox.addEventListener('change', (e) => {
             hs[attr] = e.target.checked;
             GM.setValue('helper_setting', hs);
+            if (onchange) {
+                onchange();
+            }
         });
         label.appendChild(checkbox);
 
@@ -1711,7 +1715,13 @@ label:has(.helper-toggle-switch)
         // 选择文件打包模式
         components.push({ 'title': '归档保存方式', 'type': 'select', 'args': ['files_pack_mode', ['no', 'single', 'all'], ['不归档', '分类归档', '全部归档']] });
 
-        components.push({ 'title': '自动换行', 'type': 'switch', 'args': ['enable_auto_wrap'] });
+        components.push({
+            'title': '自动换行', 'type': 'switch', 'args': ['enable_auto_wrap', () => {
+                if (hs.enable_auto_wrap) {
+                    qSA('[id^=postmessage').forEach(post => addWrapInNode(post));
+                }
+            }]
+        });
 
         // 选择默认合并下载模式
 
@@ -2018,13 +2028,6 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     insertHelperLink();
 
-    let fl = GM_getValue('followed_users', []);
-    updateGMListElements(fl, { 'uid': '143728', 'name': '打虎上山12345' }, true, (a, b) => a.uid == b.uid);
-    updateGMList('followed_users', fl);
-    let mft = GM_getValue(`${GM_info.script.author}_followed_threads`, []);
-    updateGMListElements(mft, { 'tid': 0, 'title': '所有主题', 'last_tpid': "203433" }, true, (a, b) => a.tid == b.tid);
-    updateGMList(`143728_followed_threads`, mft);
-
     const hs = GM_getValue('helper_setting', {});
     let default_update = false;
     for (let key in helper_default_setting) {
@@ -2069,8 +2072,8 @@ label:has(.helper-toggle-switch)
 })();
 
 // 最优先
+// TODO 代表作 (空间主题页、主题名片)
 // TODO 版面浮动名片、好友浮动名片添加关注
-// TODO 代表作
 // TODO 合并保存选项
 // TODO 自动回复
 // TODO op未加载的情况
