@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.9.1
+// @version      0.9.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -648,6 +648,10 @@ label:has(.helper-toggle-switch)
   width: 0%;
   transition: width 0.5s ease-in-out
 }
+
+[data-hidden]{
+  display: none !important;
+}
     `);
 
 
@@ -1255,6 +1259,15 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     // 修改页面的工具函数
     // ========================================================================================================
+    function setHidden(elem, hidden = true) {
+        if (hidden) {
+            elem.setAttribute('data-hidden', '');
+        }
+        else {
+            elem.removeAttribute('data-hidden');
+        }
+    }
+
     function insertElement(elem, pos, type = 'insertBefore') {
         switch (type) {
             case 'append':
@@ -2100,56 +2113,84 @@ label:has(.helper-toggle-switch)
         return div;
     }
 
-    function createHelperSettingTab() {
+    function createHelperSettingTab(setting_type) {
         const div = docre('div');
         let components = [];
 
-        // 开启更新通知
-        components.push({ 'title': '订阅更新通知', 'type': 'switch', 'args': ['enable_notification'] });
+        switch (setting_type) {
+            case 'read': {
 
-        // 开启历史消息
-        components.push({ 'title': '保存历史通知', 'type': 'switch', 'args': ['enable_history'] });
+                components = [
+                    // 开启更新通知
+                    { 'title': '订阅更新通知', 'type': 'switch', 'args': ['enable_notification'] },
+                    // 开启历史消息
+                    { 'title': '保存历史通知', 'type': 'switch', 'args': ['enable_history', () => setHidden(qS('#htb-history'), !hs.enable_history)] },
+                    // 开启辅助换行
+                    { 'title': '自动换行', 'type': 'switch', 'args': ['enable_auto_wrap', updatePageDoc] },
+                    // 选择默认合并下载模式
+                    // 开启屏蔽词
+                    {
+                        'title': '关键词屏蔽', 'type': 'switch', 'args': ['enable_block_keyword', () => {
+                            updatePageDoc();
+                            setHidden(qS('#htb-block'), !hs.enable_block_keyword);
+                        }
+                        ]
+                    },
+                    // 开启黑名单
+                    {
+                        'title': '黑名单', 'type': 'switch', 'args': ['enable_blacklist', () => {
+                            updatePageDoc();
+                            setHidden(qS('#htb-blacklist'), !hs.enable_blacklist);
+                        }]
+                    }];
+                break;
+            }
+            case 'save': {
 
-        // 选择下载内容
-        components.push({ 'title': '主题保存内容', 'type': 'multicheck', 'args': [[{ 'attr': 'enable_text_download', 'text': '文本' }, { 'attr': 'enable_attach_download', 'text': '附件' }, { 'attr': 'enable_op_download', 'text': '原创资源' }]] });
+                components = [
+                    // 选择下载内容
+                    {
+                        'title': '主题保存内容', 'type': 'multicheck', 'args': [[
+                            { 'attr': 'enable_text_download', 'text': '文本' },
+                            { 'attr': 'enable_attach_download', 'text': '附件' },
+                            { 'attr': 'enable_op_download', 'text': '原创资源' }]]
+                    },
+                    // 选择文件打包模式
+                    {
+                        'title': '归档保存方式', 'type': 'select', 'args': [
+                            'files_pack_mode',
+                            ['no', 'single', 'all'],
+                            ['不归档', '分类归档', '全部归档']]
+                    }];
+                break;
+            }
+            case 'data': {
+                components = [
+                    // 清除历史消息
+                    {
+                        'title': '清空历史通知', 'type': 'button', 'args': ['全部清空', () => {
+                            const confirm = window.confirm('确定清空所有历史通知？');
+                            if (confirm) {
+                                GM.deleteValue('notification_messages');
+                                location.reload();
+                            }
+                        }]
+                        , 'hidden': !hs.enable_history
+                    },
 
-        // 选择文件打包模式
-        components.push({ 'title': '归档保存方式', 'type': 'select', 'args': ['files_pack_mode', ['no', 'single', 'all'], ['不归档', '分类归档', '全部归档']] });
-
-        // 开启辅助换行
-        components.push({ 'title': '自动换行', 'type': 'switch', 'args': ['enable_auto_wrap', updatePageDoc] });
-
-        // 选择默认合并下载模式
-
-        // 清除历史消息
-        if (hs.enable_history) {
-            components.push({
-                'title': '清空历史通知', 'type': 'button', 'args': ['全部清空', () => {
-                    const confirm = window.confirm('确定清空所有历史通知？');
-                    if (confirm) {
-                        GM.deleteValue('notification_messages');
-                        location.reload();
-                    }
-                }]
-            });
+                    // 清除脚本数据
+                    {
+                        'title': '清空脚本数据', 'type': 'button', 'args': ['全部清空', () => {
+                            const confirm = window.confirm('确定清空脚本所有数据？');
+                            if (confirm) {
+                                GM_listValues().forEach(e => GM.deleteValue(e));
+                                location.reload();
+                            }
+                        }]
+                    }];
+                break;
+            }
         }
-
-        // 清除脚本数据
-        components.push({
-            'title': '清空脚本数据', 'type': 'button', 'args': ['全部清空', () => {
-                const confirm = window.confirm('确定清空脚本所有数据？');
-                if (confirm) {
-                    GM_listValues().forEach(e => GM.deleteValue(e));
-                    location.reload();
-                }
-            }]
-        });
-
-        // 开启屏蔽词
-        components.push({ 'title': '关键词屏蔽', 'type': 'switch', 'args': ['enable_block_keyword', updatePageDoc] });
-
-        // 开启黑名单
-        components.push({ 'title': '黑名单', 'type': 'switch', 'args': ['enable_blacklist', updatePageDoc] });
 
         components.forEach(component => {
             const container = docre('div');
@@ -2162,6 +2203,10 @@ label:has(.helper-toggle-switch)
             const active_component = createHelperActiveComponent(component.type, component.args);
             container.appendChild(active_component);
 
+            if (!component.hasOwnProperty('hidden')) {
+                component.hidden = false;
+            }
+            setHidden(container, component.hidden);
             div.appendChild(container);
         });
 
@@ -2185,24 +2230,15 @@ label:has(.helper-toggle-switch)
         tab_content_container.className = 'helper-scroll-component';
         content_container.appendChild(tab_content_container);
 
-        const tabs = [{ 'name': '设置', 'func': createHelperSettingTab }];
-        if (hs.enable_notification) {
-            tabs.push({ 'name': '关注列表', 'func': createFollowListTab });
-        }
-        if (hs.enable_history) {
-            tabs.push({ 'name': '历史消息', 'func': createHistoryNotificationTab });
-        }
-        if (hs.enable_block_keyword) {
-            tabs.push({ 'name': '关键词屏蔽', 'func': createBlockKeywordTab });
-        }
-        if (hs.enable_blacklist) {
-            tabs.push({ 'name': '黑名单', 'func': createBlacklistTab });
-        }
-
-
-        if (hs.enable_debug_mode) {
-            tabs.push({ 'name': '调试', 'func': createDebugTab });
-        }
+        const tabs = [
+            { 'id': 'view', 'name': '浏览设置', 'func': () => createHelperSettingTab('read') },
+            { 'id': 'save', 'name': '下载设置', 'func': () => createHelperSettingTab('save') },
+            { 'id': 'follow', 'name': '关注列表', 'func': createFollowListTab, 'hidden': !hs.enable_notification },
+            { 'id': 'history', 'name': '历史消息', 'func': createHistoryNotificationTab, 'hidden': !hs.enable_history },
+            { 'id': 'block', 'name': '关键词屏蔽', 'func': createBlockKeywordTab, 'hidden': !hs.enable_block_keyword },
+            { 'id': 'blacklist', 'name': '黑名单', 'func': createBlacklistTab, 'hidden': !hs.enable_blacklist },
+            { 'id': 'data', 'name': '数据设置', 'func': () => createHelperSettingTab('data') },
+            { 'id': 'debug', 'name': '调试', 'func': createDebugTab }];
 
         const show_tab = content => {
             tab_content_container.innerHTML = '';
@@ -2212,6 +2248,7 @@ label:has(.helper-toggle-switch)
         tabs.forEach((tab, index) => {
             const btn = docre('button');
             btn.type = 'button';
+            btn.id = 'htb-' + tab.id;
             btn.className = 'helper-tab-btn';
             btn.textContent = tab.name;
 
@@ -2226,6 +2263,10 @@ label:has(.helper-toggle-switch)
                 show_tab(tab.func());
             }
 
+            if (!tab.hasOwnProperty('hidden')) {
+                tab.hidden = false;
+            }
+            setHidden(btn, tab.hidden);
             tab_btn_container.appendChild(btn);
         });
 
@@ -2559,10 +2600,11 @@ label:has(.helper-toggle-switch)
 // FIXME 参见tg详情
 // FIXME chrome支持
 // FIXME 更新通知、代表作中标题的精华标记
+// FIXME 进度条不消失
 
 // 功能更新：优先
 // TODO 合并保存选项
-// TODO 下载进度条
+// TODO 合并保存进度条
 // TODO 自动回复
 
 // 功能更新：末优先
@@ -2575,7 +2617,6 @@ label:has(.helper-toggle-switch)
 // TODO debug log
 // TODO 关注按钮联动
 // TODO 按钮hover
-// TODO 动态tab
 // TODO 代表作按回复排序
 // TODO 无代表作时居中
 // TODO 代表作标题链接、省略
@@ -2585,6 +2626,7 @@ label:has(.helper-toggle-switch)
 // TODO 黑名单按钮
 
 // 设置优化
+// TODO 设置分组
 // TODO 换行参数
 // TODO 提醒参数
 // TODO 代表作数量
