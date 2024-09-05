@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.8
+// @version      0.8.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -184,6 +184,19 @@
   max-width: calc(min(70%, 30rem));
   text-overflow: ellipsis;
   vertical-align: top;
+}
+
+#helper-loading-overlay{
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 3000;
 }
 
 #helper-overlay {
@@ -560,6 +573,20 @@ label:has(.helper-toggle-switch)
   top: 0px;
   padding-top: 10px;
   background-color: white;
+}
+
+.helper-spinner {
+  border: 5px solid #f3f3f3;
+  border-top: 5px solid #3498db;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
     `);
 
@@ -1556,6 +1583,15 @@ label:has(.helper-toggle-switch)
         return overlay;
     }
 
+    function createLoadingOverlay() {
+        const overlay = docre('div');
+        overlay.id = 'helper-loading-overlay';
+        const spiner = docre('div');
+        spiner.className = 'helper-spinner';
+        overlay.appendChild(spiner);
+        return overlay;
+    }
+
     function createPopupWithTitle(title) {
         const popup = docre('div');
         const overlay = createOverlay(popup);
@@ -2054,7 +2090,7 @@ label:has(.helper-toggle-switch)
         }
 
         if (masterpiece_list.length == 0) {
-            div.appendChild(createCenterMessageDiv('暂无代表作'));
+            div.appendChild(createCenterMessageDiv('暂无作品'));
             return div;
         }
 
@@ -2091,25 +2127,33 @@ label:has(.helper-toggle-switch)
 
     async function createMasterpiecePopup(uid, user_name) {
         const popup = createPopupWithTitle(`${user_name} 的代表作`);
+        document.body.appendChild(popup);
         const content_container = qS('#helper-content-container', popup);
 
         let masterpiece_info = GM_getValue(uid + '_masterpiece', { 'update_time': 0, 'max_view_threads': [], 'max_reply_threads': [] });
         if (Date.now() - masterpiece_info.update_time > hs.data_cache_time) {
+            content_container.appendChild(createLoadingOverlay());
             masterpiece_info = await updateMasterpiece(uid);
+            content_container.innerHTML = '';
         }
         content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
 
-        const footnote = docre('div');
-        footnote.className = 'helper-footnote';
-        footnote.textContent = `缓存时间：${new Date(masterpiece_info.update_time).toLocaleString()} | `;
-        const reload_link = insertInteractiveLink('立即刷新', async () => {
-            masterpiece_info = await updateMasterpiece(uid);
-            location.reload();
-        }, footnote);
-        reload_link.style.color = 'inherit';
-        content_container.appendChild(footnote);
+        const insertFootnote = () => {
+            const footnote = docre('div');
+            content_container.appendChild(footnote);
+            footnote.className = 'helper-footnote';
+            footnote.textContent = `缓存时间：${new Date(masterpiece_info.update_time).toLocaleString()} | `;
+            const reload_link = insertInteractiveLink('立即刷新', async () => {
+                content_container.appendChild(createLoadingOverlay());
+                masterpiece_info = await updateMasterpiece(uid);
+                content_container.innerHTML = '';
+                content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
+                insertFootnote();
+            }, footnote);
+            reload_link.style.color = 'inherit';
+        };
 
-        document.body.appendChild(popup);
+        insertFootnote();
     }
 
     async function updateMasterpiece(uid) {
@@ -2134,8 +2178,8 @@ label:has(.helper-toggle-switch)
                 const views = Number(qS('.dm-eye-fill', thread).nextSibling.textContent);
                 const replies = Number(qS('.dm-chat-s-fill', thread).nextSibling.textContent);
                 threads.push({ 'tid': tid, 'title': thread_title, 'views': views, 'replies': replies });
-                resolve();
             }
+            resolve();
         }));
         await Promise.all(promises);
 
@@ -2252,7 +2296,6 @@ label:has(.helper-toggle-switch)
 // FIXME 更新通知、代表作中标题的精华标记
 
 // 功能更新：优先
-// TODO 版面浮动名片、好友浮动名片添加关注
 // TODO 合并保存选项
 // TODO 自动回复
 
@@ -2273,7 +2316,9 @@ label:has(.helper-toggle-switch)
 // TODO 按钮hover
 // TODO 动态tab
 // TODO 代表作按回复排序
-// TODO 代表作加载动画
+// TODO 无代表作时居中
+// TODO 版面浮动名片、好友浮动名片添加代表作
+// TODO 版面浮动名片、好友浮动名片添加关注
 
 // 设置优化
 // TODO 换行参数
