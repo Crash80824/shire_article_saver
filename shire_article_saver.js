@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10
+// @version      0.10.0.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1120,9 +1120,20 @@ label:has(.helper-toggle-switch)
     }
 
     async function saveMergedThreads() {
+        createTopProgressbar();
+        let progress = { 'value': 0 };
+
         const uid = location.href.parseURL().uid;
         let checked_threads = GM_getValue(uid + '_checked_threads', []);
+        progress.value = 10;
+        updateTopProgressbar(progress.value);
 
+        if (checked_threads.length == 0) {
+            alert('没有需要保存的内容, 请检查设置.');
+            return;
+        }
+
+        let dt = Math.ceil(800 * 100 / checked_threads.length) / 1000;
         let filename = '';
         const promises = checked_threads.map(async tid => {
             const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': tid };
@@ -1136,14 +1147,19 @@ label:has(.helper-toggle-switch)
             else {
                 thread_content = { 'tid': tid, 'text': '没有权限查看此贴\n' };
             }
-            return new Promise(resolve => resolve(thread_content));
+            progress.value += dt;
+            updateTopProgressbar(progress.value);
+            return thread_content;
         });
         let content_list = await Promise.all(promises);
         content_list = content_list.sort((a, b) => a.tid - b.tid);
         const content = content_list.map(e => e.text).join('\n');
         filename = filename.replace(/[ \t\r\n(（【［“‘]/g, '')
         filename += '（合集）';
-        saveFile(filename, content);
+
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        await downloadFromURL({ 'url': url, 'title': filename, 'is_blob': true }, null, progress, 10);
         GM.deleteValue(uid + '_checked_threads');
     }
 
@@ -1663,7 +1679,7 @@ label:has(.helper-toggle-switch)
                 }
 
                 const pos = qS('#delform > table > tbody > tr.th > th');
-                insertInteractiveLink('  合并保存', () => saveMergedThreads(), pos);
+                insertInteractiveLink('  合并保存', () => { saveMergedThreads().then(() => removeTopProgressbar()) }, pos);
             }
             if (URL_info.view == 'me' && URL_info.from == 'space') {
                 const user_name = getSpaceAuthor();
@@ -2626,16 +2642,14 @@ label:has(.helper-toggle-switch)
 // FIXME 参见tg详情
 // FIXME chrome支持
 // FIXME 更新通知、代表作中标题的精华标记
+// TODO 测试自动回复
+// FIXME merged save 没有帖子分割线
 
 // 功能更新：优先
 // TODO 合并保存选项
-// TODO 合并保存进度条
-// TODO 自动回复
 
 // 功能更新：末优先
 // TODO 用户改名提醒
-// TODO NSFW（跳过题图）
-// TODO 图片预览
 
 // 功能优化
 // TODO 保证弹窗弹出
@@ -2674,15 +2688,16 @@ label:has(.helper-toggle-switch)
 // 搁置: 不会
 // TODO 上传表情
 // TODO 表情代码
-// TODO sticky
 
 // 搁置: 麻烦
 // TODO 置顶重复
 // TODO md格式
 // TODO 历史消息重复
+// TODO NSFW（跳过题图）
 
 // 搁置：负载
 // TODO 上一集、下一集
+// TODO 图片预览
 
 
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
