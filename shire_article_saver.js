@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.8.3
+// @version      0.9
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -77,8 +77,11 @@
         'masterpiece_num': 10,
         'default_masterpiece_sort': 'view',
         // 屏蔽词设置
-        'enable_block_keyword': true,
-        'block_keywords': ['bl'],
+        'enable_block_keyword': false,
+        'block_keywords': [],
+        // 黑名单设置
+        'enable_blacklist': false,
+        'blacklist': [],
     };
 
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
@@ -1637,22 +1640,19 @@ label:has(.helper-toggle-switch)
     }
 
     function updateForumPage() {
-        if (hs.enable_block_keyword) {
-            qSA('[id^=normalthread]').forEach(thread => {
-                const title = qS('a.s.xst', thread).innerText.trim().toLowerCase();
-                if (hs.block_keywords.some(keyword => title.includes(keyword))) {
-                    thread.style.display = 'none';
-                }
-                else {
-                    thread.style.display = '';
-                }
-            });
-        }
-        else {
-            qSA('[id^=normalthread]').forEach(thread => {
+        qSA('[id^=normalthread]').forEach(thread => {
+            const title = qS('a.s.xst', thread).innerText.trim().toLowerCase();
+            const user = qS('td.by cite a', thread).innerText.trim();
+            if (hs.enable_block_keyword && hs.block_keywords.some(keyword => title.includes(keyword))) {
+                thread.style.display = 'none';
+            }
+            else if (hs.enable_blacklist && hs.blacklist.includes(user)) {
+                thread.style.display = 'none';
+            }
+            else {
                 thread.style.display = '';
-            });
-        }
+            }
+        });
     }
 
     function modifyPageDoc(init = true) {
@@ -1888,6 +1888,39 @@ label:has(.helper-toggle-switch)
         }
     }
 
+    function createHeperTagsContainer(tag_list, onremove = null) {
+        const tag_container = docre('div');
+        tag_container.className = 'helper-tag-container';
+
+        const renderTags = () => {
+            tag_container.innerHTML = '';
+            tag_list.forEach((keyword, index) => {
+                const tag = docre('div');
+                tag.className = 'helper-tag';
+                tag.textContent = keyword;
+
+                const remove_btn = docre('button');
+                remove_btn.type = 'button';
+                remove_btn.className = 'helper-tag-remove-btn';
+                remove_btn.textContent = '×';
+                remove_btn.addEventListener('click', () => {
+                    tag_list.splice(index, 1);
+                    renderTags();
+                    updatePageDoc();
+                    if (onremove) {
+                        onremove();
+                    }
+                });
+
+                tag.appendChild(remove_btn);
+                tag_container.appendChild(tag);
+            });
+        };
+        renderTags();
+
+        return tag_container;
+    }
+
     // ========================================================================================================
     // 助手设置弹窗相关
     // ========================================================================================================
@@ -1973,49 +2006,30 @@ label:has(.helper-toggle-switch)
         input.type = 'text';
         input.placeholder = '输入屏蔽词并回车提交';
         input.className = 'helper-input';
+
+        let tag_container = createHeperTagsContainer(hs.block_keywords, () => GM.setValue('helper_setting', hs));
         input.addEventListener('keyup', e => {
             if (e.key == 'Enter') {
                 const keyword = input.value.trim().toLowerCase();
                 if (keyword.length > 0 && !hs.block_keywords.includes(keyword)) {
                     hs.block_keywords.push(keyword);
-                    GM.setValue('helper_setting', hs);
-                    renderTags();
+                    div.removeChild(tag_container);
+                    tag_container = createHeperTagsContainer(hs.block_keywords, () => GM.setValue('helper_setting', hs));
+                    div.appendChild(tag_container);
                     updatePageDoc();
                 }
                 input.value = '';
             }
         });
+
         div.appendChild(input);
-
-        const tag_container = docre('div');
-        tag_container.className = 'helper-tag-container';
-
-        const renderTags = () => {
-            tag_container.innerHTML = '';
-            hs.block_keywords.forEach((keyword, index) => {
-                const tag = docre('div');
-                tag.className = 'helper-tag';
-                tag.textContent = keyword;
-
-                const remove_btn = docre('button');
-                remove_btn.type = 'button';
-                remove_btn.className = 'helper-tag-remove-btn';
-                remove_btn.textContent = '×';
-                remove_btn.addEventListener('click', () => {
-                    hs.block_keywords.splice(index, 1);
-                    GM.setValue('helper_setting', hs);
-                    renderTags();
-                    updatePageDoc();
-                });
-
-                tag.appendChild(remove_btn);
-                tag_container.appendChild(tag);
-            });
-        };
-        renderTags();
         div.appendChild(tag_container);
 
         return div;
+    }
+
+    function createBlacklistTab() {
+        return createHeperTagsContainer(hs.blacklist, () => GM.setValue('helper_setting', hs));
     }
 
     function createDebugTab() {
@@ -2076,7 +2090,9 @@ label:has(.helper-toggle-switch)
 
         // 开启屏蔽词
         components.push({ 'title': '关键词屏蔽', 'type': 'switch', 'args': ['enable_block_keyword', updatePageDoc] });
+
         // 开启黑名单
+        components.push({ 'title': '黑名单', 'type': 'switch', 'args': ['enable_blacklist', updatePageDoc] });
 
         components.forEach(component => {
             const container = docre('div');
@@ -2121,6 +2137,9 @@ label:has(.helper-toggle-switch)
         }
         if (hs.enable_block_keyword) {
             tabs.push({ 'name': '关键词屏蔽', 'func': createBlockKeywordTab });
+        }
+        if (hs.enable_blacklist) {
+            tabs.push({ 'name': '黑名单', 'func': createBlacklistTab });
         }
 
 
@@ -2489,11 +2508,6 @@ label:has(.helper-toggle-switch)
 // TODO 下载进度条
 // TODO 自动回复
 
-// 功能更新：次优先
-// TODO 屏蔽词
-// TODO 黑名单
-// TODO 一键删除
-
 // 功能更新：末优先
 // TODO 用户改名提醒
 // TODO NSFW（跳过题图）
@@ -2510,6 +2524,8 @@ label:has(.helper-toggle-switch)
 // TODO 代表作标题链接、省略
 // TODO 版面浮动名片、好友浮动名片添加代表作
 // TODO 版面浮动名片、好友浮动名片添加关注
+// TODO 黑名单等级
+// TODO 黑名单按钮
 
 // 设置优化
 // TODO 换行参数
