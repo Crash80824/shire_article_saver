@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.9.2.1
+// @version      0.10
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1058,7 +1058,6 @@ label:has(.helper-toggle-switch)
         }
 
         await Promise.all(promises);
-        console.log('All files have been saved.');
         removeTopProgressbar();
     }
 
@@ -1071,7 +1070,7 @@ label:has(.helper-toggle-switch)
             let text = file_info;
             let content = await getPageContent(document, 'main');
             text += content.text;
-            saveFile(title_name, text, content.attach, content.op);
+            await saveFile(title_name, text, content.attach, content.op);
         }
         else {
             let filename = title_name;
@@ -1113,7 +1112,7 @@ label:has(.helper-toggle-switch)
             text += content_list.map(e => e.text).join('');
             attach.push(...content_list.map(e => e.attach).flat());
             op.push(...content_list.map(e => e.op).flat());
-            saveFile(filename, text, attach, op);
+            await saveFile(filename, text, attach, op);
             if (type == 'checked') {
                 GM.deleteValue(thread_id + '_checked_posts');
             }
@@ -1148,7 +1147,7 @@ label:has(.helper-toggle-switch)
         GM.deleteValue(uid + '_checked_threads');
     }
 
-    function autoReply() {
+    function autoReply(timeout = 2000) {
         const reply_text = hs.auto_reply_message;
         const reply_textarea = qS('#fastpostmessage');
         if (reply_textarea) {
@@ -1156,7 +1155,7 @@ label:has(.helper-toggle-switch)
         }
         const reply_btn = qS('#fastpostsubmit');
         if (reply_btn) {
-            reply_btn.click();
+            setTimeout(() => reply_btn.click(), timeout);
         }
     }
 
@@ -1614,11 +1613,12 @@ label:has(.helper-toggle-switch)
 
         modifyPostInPage();
 
-        const saveFunc = (type = 'main') => async () => {
-            saveThread(type);
-            // if (hs.auto_reply) {
-            //     autoReply();
-            // }
+        const saveFunc = (type = 'main') => () => {
+            saveThread(type).then(() => {
+                if (hs.enable_auto_reply) {
+                    autoReply();
+                }
+            });
         };
 
         if (isFirstPage()) {
@@ -2147,7 +2147,6 @@ label:has(.helper-toggle-switch)
                     { 'title': '保存历史通知', 'type': 'switch', 'args': ['enable_history', () => setHidden(qS('#htb-history'), !hs.enable_history)] },
                     // 开启辅助换行
                     { 'title': '自动换行', 'type': 'switch', 'args': ['enable_auto_wrap', updatePageDoc] },
-                    // 选择默认合并下载模式
                     // 开启屏蔽词
                     {
                         'title': '关键词屏蔽', 'type': 'switch', 'args': ['enable_block_keyword', () => {
@@ -2181,7 +2180,14 @@ label:has(.helper-toggle-switch)
                             'files_pack_mode',
                             ['no', 'single', 'all'],
                             ['不归档', '分类归档', '全部归档']]
-                    }];
+                    },
+                    // 选择默认合并下载模式
+                    // 开启自动回复
+                    {
+                        'title': '自动回复', 'type': 'switch', 'args': ['enable_auto_reply']
+                    }
+                ];
+
                 break;
             }
             case 'data': {
@@ -2620,7 +2626,6 @@ label:has(.helper-toggle-switch)
 // FIXME 参见tg详情
 // FIXME chrome支持
 // FIXME 更新通知、代表作中标题的精华标记
-// FIXME 进度条不消失
 
 // 功能更新：优先
 // TODO 合并保存选项
