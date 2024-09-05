@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.9.2
+// @version      0.9.2.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -970,14 +970,13 @@ label:has(.helper-toggle-switch)
         });
     }
 
-    function createZipAndDownloadFromURLs(zip_name, target_list, progress = null, dt = null) {
+    async function createZipAndDownloadFromURLs(zip_name, target_list, progress = null, dt = null) {
         if (target_list.length == 0) {
-            return;
+            return Promise.resolve();
         }
 
         if (target_list.length == 1) {
-            downloadFromURL(target_list[0], null, progress, dt);
-            return;
+            return downloadFromURL(target_list[0], null, progress, dt);
         }
 
         const zip = new JSZip();
@@ -986,18 +985,20 @@ label:has(.helper-toggle-switch)
             ddt = dt * Math.ceil(700 / target_list.length) / 1000;
         }
         const promises = target_list.map(target => downloadFromURL(target, zip, progress, ddt));
-        Promise.all(promises).then(() => {
-            zip.generateAsync({ type: 'blob' }).then(content => {
-                const a = docre('a');
-                a.download = zip_name + '.zip';
-                a.href = URL.createObjectURL(content);
-                a.click();
-                if (progress && dt) {
-                    progress.value += Math.ceil(dt * 300) / 1000;
-                    updateTopProgressbar(progress.value);
-                }
-                URL.revokeObjectURL(a.href);
-            });
+        await Promise.all(promises);
+
+        return await new Promise(async (resolve, reject) => {
+            const content = await zip.generateAsync({ type: 'blob' });
+            const a = docre('a');
+            a.download = zip_name + '.zip';
+            a.href = URL.createObjectURL(content);
+            a.click();
+            if (progress && dt) {
+                progress.value += Math.ceil(dt * 300) / 1000;
+                updateTopProgressbar(progress.value);
+            }
+            URL.revokeObjectURL(a.href);
+            resolve();
         });
     }
 
@@ -1032,23 +1033,33 @@ label:has(.helper-toggle-switch)
 
         createTopProgressbar();
         let progress = { 'value': 0 };
+        let promises = [];
 
         switch (hs.files_pack_mode) {
             case 'no': {
                 const dt = Math.ceil(1000 * 100 / download_list.reduce((acc, cur) => acc + cur.list.length, 0)) / 1000;
-                download_list.forEach(target => target.list.forEach(e => downloadFromURL(e, null, progress, dt)));
+                download_list.forEach(target =>
+                    target.list.forEach(e =>
+                        promises.push(downloadFromURL(e, null, progress, dt)
+                        )));
                 break;
             }
             case 'single': {
                 const dt = Math.ceil(1000 * 100 / download_list.length) / 1000;
-                download_list.forEach(target => createZipAndDownloadFromURLs(`${filename}_${target.name}`, target.list, progress, dt));
+                download_list.forEach(target =>
+                    promises.push(createZipAndDownloadFromURLs(`${filename}_${target.name}`, target.list, progress, dt)
+                    ));
                 break;
             }
             case 'all': {
-                createZipAndDownloadFromURLs(filename, download_list.flatMap(e => e.list), progress, 100);
+                promises.push(createZipAndDownloadFromURLs(filename, download_list.flatMap(e => e.list), progress, 100));
                 break;
             }
         }
+
+        await Promise.all(promises);
+        console.log('All files have been saved.');
+        removeTopProgressbar();
     }
 
     async function saveThread(type = 'main') {
@@ -1847,6 +1858,15 @@ label:has(.helper-toggle-switch)
         const progressbar = qS('#helper-top-progressbar');
         if (progressbar) {
             progressbar.style.width = progress + '%';
+        }
+    }
+
+    function removeTopProgressbar(timeout = 1000) {
+        const progressbar = qS('#helper-top-progressbar-container');
+        if (progressbar) {
+            setTimeout(() => {
+                document.body.removeChild(progressbar);
+            }, timeout);
         }
     }
 
