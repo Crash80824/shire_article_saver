@@ -49,27 +49,36 @@
     }
 
     const helper_default_setting = {
+        // 消息通知设置
         'enable_notification': true,
         'max_noti_threads': 3,
         'important_fids': ['78'],
+        // 历史记录设置
         'enable_history': true,
         'max_history': 100,
+        // 下载设置
         'enable_text_download': true,
         'enable_attach_download': true,
         'enable_op_download': true,
         'files_pack_mode': 'no',
         'default_merge_mode': 'main',
+        // 自动回复设置
         'enable_auto_reply': true,
         'auto_reply_message': '收藏了，谢谢楼主分享！',
+        // 自动换行设置
         'enable_auto_wrap': false,
         'min_wrap_length': 100,
         'typical_wrap_length': 200,
         'max_wrap_length': 300,
         'wrap_dot': '.。？?!！',
         'wrap_comma': ',，、;；',
+        // 代表作设置
         'data_cache_time': 168 * 3600 * 1000,
         'masterpiece_num': 10,
         'default_masterpiece_sort': 'view',
+        // 屏蔽词设置
+        'enable_block_keyword': true,
+        'block_keywords': ['BL', 'bl'],
     };
 
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
@@ -1169,27 +1178,8 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 修改页面内容的函数
+    // 修改页面的工具函数
     // ========================================================================================================
-    function insertHelperLink() {
-        let target_menu = qS('#myitem')
-        if (target_menu) {
-            const helper_setting_link = insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperPopup() } }, target_menu, 'insertBefore');
-            helper_setting_link.id = 'helper_setting';
-            const span = docre('span');
-            span.textContent = ' | ';
-            span.className = 'pipe';
-            insertElement(span, target_menu);
-            return;
-        }
-
-        target_menu = qS('#myspace');
-        if (target_menu) {
-            target_menu = qS('#myspace')
-            insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperPopup() } }, target_menu, 'insertBefore');
-            return;
-        }
-    }
     function insertElement(elem, pos, type = 'insertBefore') {
         switch (type) {
             case 'append':
@@ -1301,7 +1291,7 @@ label:has(.helper-toggle-switch)
     }
 
     function addWrapInNode(root, min_wrap_length = hs.min_wrap_length, wrap_length = hs.typical_wrap_length, max_wrap_length = hs.max_wrap_length, dot_char = hs.wrap_dot, comma_char = hs.wrap_comma) {
-        const find_break = text => {
+        const findBreak = text => {
             for (let i = wrap_length; i < Math.min(text.length, max_wrap_length); i++) {
                 if (dot_char.includes(text[i])) {
                     return i;
@@ -1309,7 +1299,7 @@ label:has(.helper-toggle-switch)
             }
             if (text.length > max_wrap_length) {
                 for (let i = max_wrap_length; i < text.length; i++) {
-                    if (comma_char.includes(text[i])) {
+                    if (dot_char.includes(text[i]) || comma_char.includes(text[i])) {
                         return i;
                     }
                 }
@@ -1324,7 +1314,7 @@ label:has(.helper-toggle-switch)
 
             let break_index;
             if (text.length > wrap_length) {
-                break_index = find_break(text);
+                break_index = findBreak(text);
             }
 
             if (break_index > 0) {
@@ -1377,6 +1367,29 @@ label:has(.helper-toggle-switch)
                 insertElement(br, node);
             }
             node = iter.nextNode();
+        }
+    }
+
+    // ========================================================================================================
+    // 修改页面内容
+    // ========================================================================================================
+    function insertHelperLink() {
+        let target_menu = qS('#myitem')
+        if (target_menu) {
+            const helper_setting_link = insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperPopup() } }, target_menu, 'insertBefore');
+            helper_setting_link.id = 'helper_setting';
+            const span = docre('span');
+            span.textContent = ' | ';
+            span.className = 'pipe';
+            insertElement(span, target_menu);
+            return;
+        }
+
+        target_menu = qS('#myspace');
+        if (target_menu) {
+            target_menu = qS('#myspace')
+            insertInteractiveLink('助手', () => { if (!qS('#helper-popup')) { createHelperPopup() } }, target_menu, 'insertBefore');
+            return;
         }
     }
 
@@ -1542,6 +1555,26 @@ label:has(.helper-toggle-switch)
 
     }
 
+    function blockThreadByKeyword(block) {
+        if (block) {
+            qSA('[id^=normalthread]').forEach(thread => {
+                const title = qS('a.s.xst', thread).innerText.trim();
+                if (hs.block_keywords.some(keyword => title.includes(keyword))) {
+                    thread.style.display = 'none';
+                }
+            });
+        }
+        else {
+            qSA('[id^=normalthread]').forEach(thread => {
+                thread.style.display = '';
+            });
+        }
+    }
+
+    function modifyForumPage() {
+        blockThreadByKeyword(hs.enable_block_thread_by_keyword);
+    }
+
     // ========================================================================================================
     // 浮动弹窗通用函数
     // ========================================================================================================
@@ -1629,91 +1662,8 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 助手设置弹窗相关
+    // 助手设置组件相关
     // ========================================================================================================
-
-    function createFollowListTable() {
-        const followed_users = GM_getValue('followed_users', []);
-
-        if (followed_users.length == 0) {
-            return createCenterMessageDiv('暂无关注');
-        }
-
-        const table = docre('table');
-        table.className = 'helper-popup-table';
-        const table_head = docre('thead');
-        table.appendChild(table_head);
-        const title_row = table_head.insertRow();
-
-        const user_title = docre('th');
-        const thread_title = docre('th');
-        const follow_title = docre('th');
-        user_title.textContent = '用户';
-        thread_title.textContent = '关注内容';
-        follow_title.textContent = '操作';
-        [user_title, thread_title, follow_title].forEach(e => title_row.appendChild(e));
-
-        const table_body = docre('tbody');
-        table.appendChild(table_body);
-
-        for (let user of followed_users) {
-            const followed_threads = GM_getValue(user.uid + '_followed_threads', []);
-            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
-
-            if (followed_threads.some(e => e.tid == -1)) {
-                const row = table_body.insertRow();
-                const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
-
-                insertLink(user.name, user_URL_params, user_cell);
-                const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
-                insertLink('所有回复', thread_URL_params, thread_cell);
-                follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': -1, 'title': '所有回复' }));
-                continue;
-            }
-
-            for (let thread of followed_threads) {
-                const row = table_body.insertRow();
-                const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
-
-                insertLink(user.name, user_URL_params, user_cell);
-                let thread_URL_params;
-                if (thread.tid > 0) {
-                    thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid };
-                }
-                else if (thread.tid == 0) {
-                    thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
-                }
-
-                insertLink(thread.title, thread_URL_params, thread_cell);
-                follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': thread.tid, 'title': thread.title }));
-            }
-        }
-        return table;
-    }
-
-    function createHistoryNotificationTable() {
-        const notification_messages = GM_getValue('notification_messages', []);
-
-        if (notification_messages.length == 0) {
-            return createCenterMessageDiv('暂无历史通知');
-        }
-
-        const div = docre('div');
-        notification_messages.forEach(message => { div.innerHTML += message; });
-        return div;
-    }
-
-    function createDebugTable() {
-        const div = docre('div');
-        const all_value = GM_listValues();
-        all_value.forEach(element => {
-            const p = docre('p');
-            p.textContent = element + ':' + JSON.stringify(GM_getValue(element));
-            div.appendChild(p);
-        });
-        return div;
-    }
-
     function createHelperSettingSelect(attr, options = [], texts = []) {
         const status = hs[attr];
         if (options.length == 0) {
@@ -1819,7 +1769,96 @@ label:has(.helper-toggle-switch)
         }
     }
 
-    function createHelperSettingTable() {
+    // ========================================================================================================
+    // 助手设置弹窗相关
+    // ========================================================================================================
+    function createFollowListTab() {
+        const followed_users = GM_getValue('followed_users', []);
+
+        if (followed_users.length == 0) {
+            return createCenterMessageDiv('暂无关注');
+        }
+
+        const table = docre('table');
+        table.className = 'helper-popup-table';
+        const table_head = docre('thead');
+        table.appendChild(table_head);
+        const title_row = table_head.insertRow();
+
+        const user_title = docre('th');
+        const thread_title = docre('th');
+        const follow_title = docre('th');
+        user_title.textContent = '用户';
+        thread_title.textContent = '关注内容';
+        follow_title.textContent = '操作';
+        [user_title, thread_title, follow_title].forEach(e => title_row.appendChild(e));
+
+        const table_body = docre('tbody');
+        table.appendChild(table_body);
+
+        for (let user of followed_users) {
+            const followed_threads = GM_getValue(user.uid + '_followed_threads', []);
+            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+
+            if (followed_threads.some(e => e.tid == -1)) {
+                const row = table_body.insertRow();
+                const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
+
+                insertLink(user.name, user_URL_params, user_cell);
+                const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
+                insertLink('所有回复', thread_URL_params, thread_cell);
+                follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': -1, 'title': '所有回复' }));
+                continue;
+            }
+
+            for (let thread of followed_threads) {
+                const row = table_body.insertRow();
+                const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
+
+                insertLink(user.name, user_URL_params, user_cell);
+                let thread_URL_params;
+                if (thread.tid > 0) {
+                    thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid };
+                }
+                else if (thread.tid == 0) {
+                    thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
+                }
+
+                insertLink(thread.title, thread_URL_params, thread_cell);
+                follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': thread.tid, 'title': thread.title }));
+            }
+        }
+        return table;
+    }
+
+    function createHistoryNotificationTab() {
+        const notification_messages = GM_getValue('notification_messages', []);
+
+        if (notification_messages.length == 0) {
+            return createCenterMessageDiv('暂无历史通知');
+        }
+
+        const div = docre('div');
+        notification_messages.forEach(message => { div.innerHTML += message; });
+        return div;
+    }
+
+    function createBlockKeywordTab() {
+
+    }
+
+    function createDebugTab() {
+        const div = docre('div');
+        const all_value = GM_listValues();
+        all_value.forEach(element => {
+            const p = docre('p');
+            p.textContent = element + ':' + JSON.stringify(GM_getValue(element));
+            div.appendChild(p);
+        });
+        return div;
+    }
+
+    function createHelperSettingTab() {
         const div = docre('div');
         let components = [];
 
@@ -1835,6 +1874,7 @@ label:has(.helper-toggle-switch)
         // 选择文件打包模式
         components.push({ 'title': '归档保存方式', 'type': 'select', 'args': ['files_pack_mode', ['no', 'single', 'all'], ['不归档', '分类归档', '全部归档']] });
 
+        // 开启辅助换行
         components.push({
             'title': '自动换行', 'type': 'switch', 'args': ['enable_auto_wrap', () => {
                 if (hs.enable_auto_wrap) {
@@ -1868,7 +1908,9 @@ label:has(.helper-toggle-switch)
                 }
             }]
         });
-        // 开启辅助换行
+
+        // 开启屏蔽词
+        components.push({ 'title': '关键词屏蔽', 'type': 'switch', 'args': ['enable_block_keyword'] });
         // 开启黑名单
 
         components.forEach(component => {
@@ -1905,15 +1947,20 @@ label:has(.helper-toggle-switch)
         tab_content_container.className = 'helper-scroll-component';
         content_container.appendChild(tab_content_container);
 
-        const tabs = [{ 'name': '设置', 'func': createHelperSettingTable }];
+        const tabs = [{ 'name': '设置', 'func': createHelperSettingTab }];
         if (hs.enable_notification) {
-            tabs.push({ 'name': '关注列表', 'func': createFollowListTable });
+            tabs.push({ 'name': '关注列表', 'func': createFollowListTab });
         }
         if (hs.enable_history) {
-            tabs.push({ 'name': '历史消息', 'func': createHistoryNotificationTable });
+            tabs.push({ 'name': '历史消息', 'func': createHistoryNotificationTab });
         }
+        if (hs.enable_block_keyword) {
+            tabs.push({ 'name': '关键词屏蔽', 'func': createBlockKeywordTab });
+        }
+
+
         if (hs.enable_debug_mode) {
-            tabs.push({ 'name': '调试', 'func': createDebugTable });
+            tabs.push({ 'name': '调试', 'func': createDebugTab });
         }
 
         const show_tab = content => {
@@ -2173,7 +2220,7 @@ label:has(.helper-toggle-switch)
             const threads_in_page = qSA('li.list', page_doc);
             for (let thread of threads_in_page) {
                 const thread_title_node = qS('.threadlist_tit', thread);
-                const thread_title = thread_title_node.innerText;
+                const thread_title = thread_title_node.innerText.trim();
                 const tid = thread_title_node.parentNode.href.parseURL().tid;
                 const views = Number(qS('.dm-eye-fill', thread).nextSibling.textContent);
                 const replies = Number(qS('.dm-chat-s-fill', thread).nextSibling.textContent);
@@ -2273,6 +2320,7 @@ label:has(.helper-toggle-switch)
                 // modifyPostOnSubmit('postform', original_smilies_types);
             }
             if (location_params.mod == 'forumdisplay') {
+                modifyForumPage();
                 // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
                 // modifyPostOnSubmit('fastpostform', original_smilies_types);
             }
@@ -2297,6 +2345,7 @@ label:has(.helper-toggle-switch)
 
 // 功能更新：优先
 // TODO 合并保存选项
+// TODO 下载进度条
 // TODO 自动回复
 
 // 功能更新：次优先
@@ -2317,6 +2366,7 @@ label:has(.helper-toggle-switch)
 // TODO 动态tab
 // TODO 代表作按回复排序
 // TODO 无代表作时居中
+// TODO 代表作标题链接、省略
 // TODO 版面浮动名片、好友浮动名片添加代表作
 // TODO 版面浮动名片、好友浮动名片添加关注
 
@@ -2347,7 +2397,6 @@ label:has(.helper-toggle-switch)
 // 搁置: 麻烦
 // TODO 置顶重复
 // TODO md格式
-// TODO 下载进度条
 // TODO 历史消息重复
 
 // 搁置：负载
