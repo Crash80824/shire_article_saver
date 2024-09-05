@@ -1,11 +1,10 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.7.2
+// @version      0.8
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
-// @match        https://www.shishirere.com/main/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
 // @grant        unsafeWindow
 // @grant        GM.getValue
@@ -54,6 +53,7 @@
         'max_noti_threads': 3,
         'important_fids': ['78'],
         'enable_history': true,
+        'max_history': 100,
         'enable_text_download': true,
         'enable_attach_download': true,
         'enable_op_download': true,
@@ -67,7 +67,9 @@
         'max_wrap_length': 300,
         'wrap_dot': '.。？?!！',
         'wrap_comma': ',，、;；',
-        'data-cache-time': 168 * 3600 * 1000
+        'data_cache_time': 168 * 3600 * 1000,
+        'masterpiece_num': 10,
+        'default_masterpiece_sort': 'view',
     };
 
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
@@ -237,7 +239,6 @@
   height: 30px;
   line-height: 30px;
   text-align: center;
-
   transition: background-color 0.3s;
 }
 
@@ -261,8 +262,17 @@
 
 #helper-content-container {
   display: flex;
-  flex: 1;
   overflow: hidden;
+  background-color: inherit;
+}
+
+.helper-footnote {
+  position: absolute;
+  bottom: 2px;
+  left: 5px;
+  font-size: 70%;
+  color: #ccc;
+  background-color: inherit;
 }
 
 .helper-scroll-component {
@@ -310,6 +320,15 @@
 .helper-halfheight-active-component {
   height: 16px;
   border-radius: 16px;
+}
+
+div.helper-center-message {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  padding: 0;
 }
 
 .helper-setting-container {
@@ -516,17 +535,18 @@ label:has(.helper-toggle-switch)
   align-items: center;
 }
 
-.helper-follow-table {
+.helper-popup-table {
   width: 100%;
+  height: 100%;
   border-collapse: collapse;
 }
 
-.helper-scroll-component:has(.helper-follow-table) {
+.helper-scroll-component:has(.helper-popup-table) {
   padding-top: 0 !important;
 }
 
-.helper-follow-table th,
-.helper-follow-table td {
+.helper-popup-table th,
+.helper-popup-table td {
   padding: 8px;
   text-align: center;
   white-space: nowrap;
@@ -535,7 +555,7 @@ label:has(.helper-toggle-switch)
   max-width: 10rem;
 }
 
-.helper-follow-table thead tr th {
+.helper-popup-table thead tr th {
   position: sticky;
   top: 0px;
   padding-top: 10px;
@@ -1444,16 +1464,32 @@ label:has(.helper-toggle-switch)
 
     async function modifySpacePage() {
         let URL_info = location.href.parseURL();
+        const uid = URL_info.uid;
         if (!Boolean(URL_info.type)) {
             URL_info.type = 'thread'
         }
-        if (URL_info.do == 'thread' && URL_info.type == 'thread') {
-            if (hasThreadInPage()) {
-                insertSpaceCheckbox();
-            }
 
-            const pos = qS('#delform > table > tbody > tr.th > th');
-            insertInteractiveLink('  合并保存', () => saveMergedThreads(), pos);
+        if (URL_info.do == 'thread') {
+            if (URL_info.type == 'thread') {
+                if (hasThreadInPage()) {
+                    insertSpaceCheckbox();
+                }
+
+                const pos = qS('#delform > table > tbody > tr.th > th');
+                insertInteractiveLink('  合并保存', () => saveMergedThreads(), pos);
+            }
+            if (URL_info.view == 'me' && URL_info.from == 'space') {
+                const user_name = getSpaceAuthor();
+                const header = document.querySelector("#ct > div.mn > div > div.bm_h > h1");
+                const masterpiece = docre("span");
+                masterpiece.className = "xs1 xw0";
+                const pipe = docre("span");
+                pipe.className = "pipe";
+                pipe.textContent = "|";
+                masterpiece.appendChild(pipe);
+                insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, user_name), masterpiece);
+                header.appendChild(masterpiece);
+            }
         }
 
         const toptb = qS('#toptb > div.z');
@@ -1480,22 +1516,27 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 浮动弹窗相关
+    // 浮动弹窗通用函数
     // ========================================================================================================
+    function removeHelperPopup() {
+        const popup = qS('#helper-popup');
+        if (popup) {
+            document.body.removeChild(popup);
+        }
+        const overlay = qS('#helper-overlay');
+        if (overlay) {
+            document.body.removeChild(overlay);
+        }
+    }
+
     window.addEventListener('keydown', e => {
         if (e.key == 'Escape') {
             const noti_popup = qS('#helper-notification-popup');
             if (noti_popup && noti_popup.style.display != 'none') {
                 noti_popup.style.display = 'none';
-                return;
             }
-            const popup = qS('#helper-popup');
-            if (popup) {
-                document.body.removeChild(popup);
-            }
-            const overlay = qS('#helper-overlay');
-            if (overlay) {
-                document.body.removeChild(overlay);
+            else {
+                removeHelperPopup();
             }
         }
     });
@@ -1508,78 +1549,121 @@ label:has(.helper-toggle-switch)
         return close_btn;
     }
 
+    function createOverlay() {
+        const overlay = docre('div');
+        overlay.id = 'helper-overlay';
+        overlay.addEventListener('click', removeHelperPopup);
+        return overlay;
+    }
+
+    function createPopupWithTitle(title) {
+        const popup = docre('div');
+        const overlay = createOverlay(popup);
+        popup.id = 'helper-popup';
+
+        const helper_title_container = docre('div');
+        helper_title_container.id = 'helper-title-container';
+        popup.appendChild(helper_title_container);
+
+        const helper_title = docre('div');
+        helper_title.id = 'helper-title';
+        helper_title.textContent = title;
+        helper_title_container.appendChild(helper_title);
+
+        const close_btn = createCloseButton(removeHelperPopup);
+        helper_title_container.appendChild(close_btn);
+
+        const hr = docre('hr');
+        hr.className = 'helper-hr';
+        popup.appendChild(hr);
+
+        const content_container = docre('div');
+        content_container.id = 'helper-content-container';
+        popup.appendChild(content_container);
+
+        document.body.appendChild(overlay);
+        return popup;
+    }
+
+    function createCenterMessageDiv(message) {
+        const div = docre('div');
+        div.className = 'helper-center-message';
+        div.textContent = message;
+        return div;
+    }
+
+    // ========================================================================================================
+    // 助手设置弹窗相关
+    // ========================================================================================================
+
     function createFollowListTable() {
+        const followed_users = GM_getValue('followed_users', []);
+
+        if (followed_users.length == 0) {
+            return createCenterMessageDiv('暂无关注');
+        }
+
         const table = docre('table');
-        table.className = 'helper-follow-table';
+        table.className = 'helper-popup-table';
         const table_head = docre('thead');
         table.appendChild(table_head);
         const title_row = table_head.insertRow();
 
-        const followed_users = GM_getValue('followed_users', []);
-        if (followed_users.length > 0) {
-            const user_title = docre('th');
-            const thread_title = docre('th');
-            const follow_title = docre('th');
-            user_title.textContent = '用户';
-            thread_title.textContent = '关注内容';
-            follow_title.textContent = '操作';
-            [user_title, thread_title, follow_title].forEach(e => title_row.appendChild(e));
+        const user_title = docre('th');
+        const thread_title = docre('th');
+        const follow_title = docre('th');
+        user_title.textContent = '用户';
+        thread_title.textContent = '关注内容';
+        follow_title.textContent = '操作';
+        [user_title, thread_title, follow_title].forEach(e => title_row.appendChild(e));
 
-            const table_body = docre('tbody');
-            table.appendChild(table_body);
+        const table_body = docre('tbody');
+        table.appendChild(table_body);
 
-            for (let user of followed_users) {
-                const followed_threads = GM_getValue(user.uid + '_followed_threads', []);
-                const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+        for (let user of followed_users) {
+            const followed_threads = GM_getValue(user.uid + '_followed_threads', []);
+            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
 
-                if (followed_threads.some(e => e.tid == -1)) {
-                    const row = table_body.insertRow();
-                    const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
+            if (followed_threads.some(e => e.tid == -1)) {
+                const row = table_body.insertRow();
+                const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
 
-                    insertLink(user.name, user_URL_params, user_cell);
-                    const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
-                    insertLink('所有回复', thread_URL_params, thread_cell);
-                    follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': -1, 'title': '所有回复' }));
-                    continue;
-                }
-
-                for (let thread of followed_threads) {
-                    const row = table_body.insertRow();
-                    const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
-
-                    insertLink(user.name, user_URL_params, user_cell);
-                    let thread_URL_params;
-                    if (thread.tid > 0) {
-                        thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid };
-                    }
-                    else if (thread.tid == 0) {
-                        thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
-                    }
-
-                    insertLink(thread.title, thread_URL_params, thread_cell);
-                    follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': thread.tid, 'title': thread.title }));
-                }
+                insertLink(user.name, user_URL_params, user_cell);
+                const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
+                insertLink('所有回复', thread_URL_params, thread_cell);
+                follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': -1, 'title': '所有回复' }));
+                continue;
             }
-        }
-        else {
-            const no_follow = docre('th');
-            no_follow.textContent = '暂无关注';
-            title_row.appendChild(no_follow);
+
+            for (let thread of followed_threads) {
+                const row = table_body.insertRow();
+                const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
+
+                insertLink(user.name, user_URL_params, user_cell);
+                let thread_URL_params;
+                if (thread.tid > 0) {
+                    thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid };
+                }
+                else if (thread.tid == 0) {
+                    thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
+                }
+
+                insertLink(thread.title, thread_URL_params, thread_cell);
+                follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': thread.tid, 'title': thread.title }));
+            }
         }
         return table;
     }
 
     function createHistoryNotificationTable() {
-        const div = docre('div');
         const notification_messages = GM_getValue('notification_messages', []);
-        if (notification_messages.length > 0) {
-            notification_messages.forEach(message => { div.innerHTML += message; });
+
+        if (notification_messages.length == 0) {
+            return createCenterMessageDiv('暂无历史通知');
         }
-        else {
-            const p = docre('p');
-            p.textContent = '暂无历史消息';
-            div.appendChild(p);
-        }
+
+        const div = docre('div');
+        notification_messages.forEach(message => { div.innerHTML += message; });
         return div;
     }
 
@@ -1769,34 +1853,7 @@ label:has(.helper-toggle-switch)
     }
 
     function createHelperPopup() {
-        const overlay = docre('div');
-        overlay.id = 'helper-overlay';
-        overlay.addEventListener('click', () => {
-            document.body.removeChild(popup);
-            document.body.removeChild(overlay);
-        });
-
-        const popup = docre('div');
-        popup.id = 'helper-popup';
-
-        const helper_title_container = docre('div');
-        helper_title_container.id = 'helper-title-container';
-        popup.appendChild(helper_title_container);
-
-        const helper_title = docre('div');
-        helper_title.id = 'helper-title';
-        helper_title.textContent = '湿热助手';
-        helper_title_container.appendChild(helper_title);
-
-        const close_btn = createCloseButton(() => {
-            document.body.removeChild(popup);
-            document.body.removeChild(overlay);
-        });
-        helper_title_container.appendChild(close_btn);
-
-        const hr = docre('hr');
-        hr.className = 'helper-hr';
-        popup.appendChild(hr);
+        const popup = createPopupWithTitle('湿热助手');
 
         const content_container = docre('div');
         content_container.id = 'helper-content-container';
@@ -1848,9 +1905,12 @@ label:has(.helper-toggle-switch)
             tab_btn_container.appendChild(btn);
         });
 
-        document.body.appendChild(overlay);
         document.body.appendChild(popup);
     }
+
+    // ========================================================================================================
+    // 消息提醒弹窗相关
+    // ========================================================================================================
 
     function createNotificationPopup() {
         const popup = docre('div');
@@ -1975,6 +2035,118 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
+    // 代表作弹窗相关
+    // ========================================================================================================
+    function createMasterpieceTable(masterpiece_info, sortby = 'view') {
+        const div = docre('div');
+        div.className = 'helper-scroll-component';
+        div.style.width = '100%';
+        div.style.paddingBottom = '10px';
+
+        let masterpiece_list = [];
+        switch (sortby) {
+            case 'reply':
+                masterpiece_list = masterpiece_info.max_reply_threads;
+                break;
+            case 'view':
+            default:
+                masterpiece_list = masterpiece_info.max_view_threads;
+        }
+
+        if (masterpiece_list.length == 0) {
+            div.appendChild(createCenterMessageDiv('暂无代表作'));
+            return div;
+        }
+
+        const table = docre('table');
+        table.className = 'helper-popup-table';
+        const table_head = docre('thead');
+        table.appendChild(table_head);
+        const title_row = table_head.insertRow();
+
+        const thread_title = docre('th');
+        const view_title = docre('th');
+        const reply_title = docre('th');
+        thread_title.textContent = '主题';
+        view_title.textContent = '浏览';
+        reply_title.textContent = '回复';
+        [thread_title, view_title, reply_title].forEach(e => title_row.appendChild(e));
+
+        const table_body = docre('tbody');
+        table.appendChild(table_body);
+
+
+        for (let thread of masterpiece_list) {
+            const row = table_body.insertRow();
+            const [thread_cell, view_cell, reply_cell] = [0, 1, 2].map(i => row.insertCell(i));
+
+            const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid };
+            insertLink(thread.title, thread_URL_params, thread_cell);
+            view_cell.textContent = thread.views;
+            reply_cell.textContent = thread.replies;
+        }
+        div.appendChild(table);
+        return div;
+    }
+
+    async function createMasterpiecePopup(uid, user_name) {
+        const popup = createPopupWithTitle(`${user_name} 的代表作`);
+        const content_container = qS('#helper-content-container', popup);
+
+        let masterpiece_info = GM_getValue(uid + '_masterpiece', { 'update_time': 0, 'max_view_threads': [], 'max_reply_threads': [] });
+        if (Date.now() - masterpiece_info.update_time > hs.data_cache_time) {
+            masterpiece_info = await updateMasterpiece(uid);
+        }
+        content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
+
+        const footnote = docre('div');
+        footnote.className = 'helper-footnote';
+        footnote.textContent = `缓存时间：${new Date(masterpiece_info.update_time).toLocaleString()} | `;
+        const reload_link = insertInteractiveLink('立即刷新', async () => {
+            masterpiece_info = await updateMasterpiece(uid);
+            location.reload();
+        }, footnote);
+        reload_link.style.color = 'inherit';
+        content_container.appendChild(footnote);
+
+        document.body.appendChild(popup);
+    }
+
+    async function updateMasterpiece(uid) {
+        const getUserThreadNum = async (uid) => {
+            const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid, 'do': 'profile' };
+            const page_doc = await getPageDocInDomain(URL_params);
+            const thread_info = qS('#ct > div.mn > div > div.bm_c > div > div:nth-child(1) > ul.cl.bbda.pbm.mbm > li > a:nth-child(12)', page_doc);
+            const thread_num = Number(thread_info.textContent.slice(4));
+            return thread_num > 0 ? thread_num : 1;
+        };
+
+        const max_page = Math.ceil(await getUserThreadNum(uid) / 20);
+        let threads = [];
+        let promises = Array.from({ length: max_page }, (v, k) => k + 1).map(page_num => new Promise(async (resolve, reject) => {
+            const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid, 'do': 'thread', 'view': 'me', 'page': page_num, 'mobile': 2 };
+            const page_doc = await getPageDocInDomain(URL_params, mobileUA);
+            const threads_in_page = qSA('li.list', page_doc);
+            for (let thread of threads_in_page) {
+                const thread_title_node = qS('.threadlist_tit', thread);
+                const thread_title = thread_title_node.innerText;
+                const tid = thread_title_node.parentNode.href.parseURL().tid;
+                const views = Number(qS('.dm-eye-fill', thread).nextSibling.textContent);
+                const replies = Number(qS('.dm-chat-s-fill', thread).nextSibling.textContent);
+                threads.push({ 'tid': tid, 'title': thread_title, 'views': views, 'replies': replies });
+                resolve();
+            }
+        }));
+        await Promise.all(promises);
+
+        const max_view_threads = threads.sort((a, b) => b.views - a.views).slice(0, hs.masterpiece_num);
+        const max_reply_threads = threads.sort((a, b) => b.replies - a.replies).slice(0, hs.masterpiece_num);
+        const masterpiece_info = { 'update_time': Date.now(), 'max_view_threads': max_view_threads, 'max_reply_threads': max_reply_threads };
+        GM.setValue(uid + '_masterpiece', masterpiece_info);
+        return masterpiece_info;
+    }
+
+    // ========================================================================================================
     // 插入表情相关
     // ========================================================================================================
     async function modifySmiliesArray(new_smilies) {
@@ -2071,47 +2243,56 @@ label:has(.helper-toggle-switch)
 
 })();
 
-// 最优先
-// TODO 代表作 (空间主题页、主题名片)
+
+// 问题修复
+// FIXME 引用内无需换行
+// FIXME op未加载的情况
+// FIXME 参见tg详情
+// FIXME chrome支持
+// FIXME 更新通知、代表作中标题的精华标记
+
+// 功能更新：优先
 // TODO 版面浮动名片、好友浮动名片添加关注
 // TODO 合并保存选项
 // TODO 自动回复
-// TODO op未加载的情况
-// TODO tg详情
-// TODO chrome支持
 
-// 次优先
+// 功能更新：次优先
 // TODO 屏蔽词
 // TODO 黑名单
 // TODO 一键删除
 
-// 末优先
+// 功能更新：末优先
 // TODO 用户改名提醒
 // TODO NSFW（跳过题图）
 // TODO 图片预览
 
-// 热更新
+// 功能优化
 // TODO 保证弹窗弹出
 // TODO debug log
-// TODO 异常处理
 // TODO 关注按钮联动
 // TODO 按钮hover
 // TODO 动态tab
+// TODO 代表作按回复排序
+// TODO 代表作加载动画
 
-// 更多设置
+// 设置优化
 // TODO 换行参数
 // TODO 提醒参数
+// TODO 代表作数量
+// TODO 历史消息上限
+// TODO 无选中时会下载空文件
 
-// 调试
+// 调试模式
 // TODO 导出关注
 // TODO 删除键值
 
-// 优化
+// 代码优化
 // insertHelperLink
 // checked_posts
 // firefox
 // hover text
 // innertext
+// getSpaceAuthor
 
 // 搁置: 不会
 // TODO 上传表情
@@ -2120,9 +2301,9 @@ label:has(.helper-toggle-switch)
 
 // 搁置: 麻烦
 // TODO 置顶重复
-// TODO 无选中时会下载空文件
 // TODO md格式
 // TODO 下载进度条
+// TODO 历史消息重复
 
 // 搁置：负载
 // TODO 上一集、下一集
