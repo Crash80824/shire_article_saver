@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.8.1
+// @version      0.8.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1370,6 +1370,45 @@ label:has(.helper-toggle-switch)
         }
     }
 
+    function removeWrapInNode(root) {
+        let iter = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, {
+            acceptNode: node => {
+                if (node.tagName == 'BR' && node.hasAttribute('data-hbr') && node.getAttribute('data-hbr') == 'before-single-br') {
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+                return NodeFilter.FILTER_REJECT;
+            }
+        }, false);
+        let node = iter.nextNode();
+
+        while (node) {
+            const current = node;
+            node = iter.nextNode();
+            current.parentNode.removeChild(current);
+        }
+
+        iter = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, {
+            acceptNode: node => {
+                if (node.tagName == 'BR' && node.hasAttribute('data-hbr') && node.getAttribute('data-hbr') == 'auto-wrap') {
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+                return NodeFilter.FILTER_REJECT;
+            }
+        }, false);
+        node = iter.nextNode();
+
+        while (node) {
+            const next = node.nextSibling;
+            const previous = node.previousSibling;
+            const current = node;
+            node = iter.nextNode();
+
+            previous.nodeValue += next.nodeValue;
+            current.parentNode.removeChild(next);
+            current.parentNode.removeChild(current);
+        }
+    }
+
     // ========================================================================================================
     // 修改页面内容
     // ========================================================================================================
@@ -1428,11 +1467,6 @@ label:has(.helper-toggle-switch)
 
             const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
             profile_icon.appendChild(createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': 0 }));
-
-            if (hs.enable_auto_wrap) {
-                const post_content = qS('[id^=postmessage]', post);
-                addWrapInNode(post_content);
-            }
         }
 
         const label = docre('label');
@@ -1502,6 +1536,20 @@ label:has(.helper-toggle-switch)
         insertInteractiveLink('保存选中  ', saveFunc('checked'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 
+    async function updatePostPages() {
+        const posts_in_page = getPostsInPage();
+        for (let post of posts_in_page) {
+            if (hs.enable_auto_wrap) {
+                const post_content = qS('[id^=postmessage]', post);
+                addWrapInNode(post_content);
+            }
+            else {
+                const post_content = qS('[id^=postmessage]', post);
+                removeWrapInNode(post_content);
+            }
+        }
+    }
+
     async function modifySpacePage() {
         let URL_info = location.href.parseURL();
         const uid = URL_info.uid;
@@ -1555,8 +1603,8 @@ label:has(.helper-toggle-switch)
 
     }
 
-    function blockThreadByKeyword(block) {
-        if (block) {
+    function modifyForumPage() {
+        if (hs.enable_block_thread_by_keyword) {
             qSA('[id^=normalthread]').forEach(thread => {
                 const title = qS('a.s.xst', thread).innerText.trim();
                 if (hs.block_keywords.some(keyword => title.includes(keyword))) {
@@ -1571,8 +1619,44 @@ label:has(.helper-toggle-switch)
         }
     }
 
-    function modifyForumPage() {
-        blockThreadByKeyword(hs.enable_block_thread_by_keyword);
+    function modifyPageDoc(init = true) {
+        if (hasReadPermission()) {
+            if (location_params.loc == 'forum') {
+                if (location_params.mod == 'viewthread') {
+                    if (init) {
+                        modifyPostPage();
+                        // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
+                        // modifyPostOnSubmit('fastpostform', original_smilies_types);
+                    }
+                    updatePostPages();
+                }
+                if (location_params.mod == 'post') {
+                    // insertExtraSmilies('smiliesdiv', 'e_', original_smilies_types, new_smilies);
+                    // modifyBBCode2Html(original_smilies_types);
+                    // modifyPostOnSubmit('postform', original_smilies_types);
+                }
+                if (location_params.mod == 'forumdisplay') {
+                    if (init) {
+                        modifyForumPage();
+                        // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
+                        // modifyPostOnSubmit('fastpostform', original_smilies_types);
+                    }
+
+                }
+            }
+
+            if (location_params.loc == 'home') {
+                if (location_params.mod == 'space') {
+                    if (init) {
+                        modifySpacePage();
+                    }
+                }
+            }
+        }
+    }
+
+    function updatePageDoc() {
+        modifyPageDoc(false);
     }
 
     // ========================================================================================================
@@ -1875,13 +1959,7 @@ label:has(.helper-toggle-switch)
         components.push({ 'title': '归档保存方式', 'type': 'select', 'args': ['files_pack_mode', ['no', 'single', 'all'], ['不归档', '分类归档', '全部归档']] });
 
         // 开启辅助换行
-        components.push({
-            'title': '自动换行', 'type': 'switch', 'args': ['enable_auto_wrap', () => {
-                if (hs.enable_auto_wrap) {
-                    qSA('[id^=postmessage').forEach(post => addWrapInNode(post));
-                }
-            }]
-        });
+        components.push({ 'title': '自动换行', 'type': 'switch', 'args': ['enable_auto_wrap', updatePageDoc] });
 
         // 选择默认合并下载模式
 
@@ -2307,31 +2385,7 @@ label:has(.helper-toggle-switch)
         updateNotificationPopup();
     }
 
-    if (hasReadPermission()) {
-        if (location_params.loc == 'forum') {
-            if (location_params.mod == 'viewthread') {
-                modifyPostPage();
-                // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
-                // modifyPostOnSubmit('fastpostform', original_smilies_types);
-            }
-            if (location_params.mod == 'post') {
-                // insertExtraSmilies('smiliesdiv', 'e_', original_smilies_types, new_smilies);
-                // modifyBBCode2Html(original_smilies_types);
-                // modifyPostOnSubmit('postform', original_smilies_types);
-            }
-            if (location_params.mod == 'forumdisplay') {
-                modifyForumPage();
-                // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
-                // modifyPostOnSubmit('fastpostform', original_smilies_types);
-            }
-        }
-
-        if (location_params.loc == 'home') {
-            if (location_params.mod == 'space') {
-                modifySpacePage();
-            }
-        }
-    }
+    modifyPageDoc();
 
 })();
 
