@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.9
+// @version      0.9.0.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -968,12 +968,6 @@ label:has(.helper-toggle-switch)
     }
 
     async function saveFile(filename, text, attach = [], op = []) {
-        const something_to_save = hs.enable_text_download || (hs.enable_attach_download && attach.length > 0) || (hs.enable_op_download && op.length > 0);
-        if (!something_to_save) {
-            alert('没有需要保存的内容, 请检查设置.');
-            return;
-        }
-
         let download_list = []
 
         if (hs.enable_text_download) {
@@ -993,6 +987,11 @@ label:has(.helper-toggle-switch)
 
         if (hs.enable_op_download) {
             download_list.push({ 'list': op, 'name': '原创资源保护' });
+        }
+
+        if (download_list.length == 0 || download_list.every(e => e.list.length == 0)) {
+            alert('没有需要保存的内容, 请检查设置.');
+            return;
         }
 
         switch (hs.files_pack_mode) {
