@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.9.0.1
+// @version      0.9.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -633,6 +633,21 @@ label:has(.helper-toggle-switch)
   padding-left: 5px;
   margin-left: 5px;
 }
+
+#helper-top-progressbar-container {
+  position: fixed;
+  top: 0;
+  width: 100%;
+  background-color: #eee;
+  z-index: 999;
+}
+
+#helper-top-progressbar {
+  height: 5px;
+  background-color: #4caf50;
+  width: 0%;
+  transition: width 0.5s ease-in-out
+}
     `);
 
 
@@ -898,7 +913,7 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     // 保存与下载的函数
     // ========================================================================================================
-    function downloadFromURL(target, zip = null) {
+    function downloadFromURL(target, zip = null, progress = null, dt = null) {
         const url = target.url;
         let title = target.title;
         const is_blob = Boolean(target.is_blob);
@@ -923,7 +938,10 @@ label:has(.helper-toggle-switch)
                         const blob = response.response;
                         if (zip !== null && response.status == 200) {
                             zip.file(`${title}.${ext}`, blob);
-                            resolve();
+                            if (progress && dt) {
+                                progress.value += dt;
+                                updateTopProgressbar(progress.value);
+                            }
                         }
                         else {
                             const reader = new FileReader();
@@ -933,35 +951,47 @@ label:has(.helper-toggle-switch)
                                 a.download = `${title}.${ext}`;
                                 a.href = reader.result;
                                 a.click();
+                                if (progress && dt) {
+                                    progress.value += dt;
+                                    updateTopProgressbar(progress.value);
+                                }
                             }
                             const revokeURL = () => is_blob ? URL.revokeObjectURL(url) : null;
                             reader.onloadend = revokeURL;
-                            resolve();
                         }
+                        resolve();
                     }
                 }
             });
         });
     }
 
-    function createZipAndDownloadFromURLs(zip_name, target_list) {
+    function createZipAndDownloadFromURLs(zip_name, target_list, progress = null, dt = null) {
         if (target_list.length == 0) {
             return;
         }
 
         if (target_list.length == 1) {
-            downloadFromURL(target_list[0]);
+            downloadFromURL(target_list[0], null, progress, dt);
             return;
         }
 
         const zip = new JSZip();
-        const promises = target_list.map(target => downloadFromURL(target, zip));
+        let ddt = null;
+        if (dt) {
+            ddt = dt * Math.ceil(700 / target_list.length) / 1000;
+        }
+        const promises = target_list.map(target => downloadFromURL(target, zip, progress, ddt));
         Promise.all(promises).then(() => {
             zip.generateAsync({ type: 'blob' }).then(content => {
                 const a = docre('a');
                 a.download = zip_name + '.zip';
                 a.href = URL.createObjectURL(content);
                 a.click();
+                if (progress && dt) {
+                    progress.value += Math.ceil(dt * 300) / 1000;
+                    updateTopProgressbar(progress.value);
+                }
                 URL.revokeObjectURL(a.href);
             });
         });
@@ -989,21 +1019,31 @@ label:has(.helper-toggle-switch)
             download_list.push({ 'list': op, 'name': '原创资源保护' });
         }
 
-        if (download_list.length == 0 || download_list.every(e => e.list.length == 0)) {
+        download_list = download_list.filter(e => e.list.length > 0);
+
+        if (download_list.length == 0) {
             alert('没有需要保存的内容, 请检查设置.');
             return;
         }
 
+        createTopProgressbar();
+        let progress = { 'value': 0 };
+
         switch (hs.files_pack_mode) {
-            case 'no':
-                download_list.forEach(target => target.list.forEach(e => downloadFromURL(e)));
+            case 'no': {
+                const dt = Math.ceil(1000 * 100 / download_list.reduce((acc, cur) => acc + cur.list.length, 0)) / 1000;
+                download_list.forEach(target => target.list.forEach(e => downloadFromURL(e, null, progress, dt)));
                 break;
-            case 'single':
-                download_list.forEach(target => createZipAndDownloadFromURLs(`${filename}_${target.name}`, target.list));
+            }
+            case 'single': {
+                const dt = Math.ceil(1000 * 100 / download_list.length) / 1000;
+                download_list.forEach(target => createZipAndDownloadFromURLs(`${filename}_${target.name}`, target.list, progress, dt));
                 break;
-            case 'all':
-                createZipAndDownloadFromURLs(filename, download_list.flatMap(e => e.list));
+            }
+            case 'all': {
+                createZipAndDownloadFromURLs(filename, download_list.flatMap(e => e.list), progress, 100);
                 break;
+            }
         }
     }
 
@@ -1777,6 +1817,24 @@ label:has(.helper-toggle-switch)
         div.className = 'helper-center-message';
         div.textContent = message;
         return div;
+    }
+
+    function createTopProgressbar() {
+        const container = docre('div');
+        container.id = 'helper-top-progressbar-container';
+        const progressbar = docre('div');
+        progressbar.id = 'helper-top-progressbar';
+        container.appendChild(progressbar);
+
+        document.body.appendChild(container);
+        return progressbar;
+    }
+
+    function updateTopProgressbar(progress) {
+        const progressbar = qS('#helper-top-progressbar');
+        if (progressbar) {
+            progressbar.style.width = progress + '%';
+        }
     }
 
     // ========================================================================================================
