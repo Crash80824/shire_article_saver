@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.8.2
+// @version      0.8.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -78,7 +78,7 @@
         'default_masterpiece_sort': 'view',
         // 屏蔽词设置
         'enable_block_keyword': true,
-        'block_keywords': ['BL', 'bl'],
+        'block_keywords': ['bl'],
     };
 
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
@@ -577,7 +577,7 @@ label:has(.helper-toggle-switch)
   max-width: 10rem;
 }
 
-.helper-popup-table thead tr th {
+.helper-sticky-header {
   position: sticky;
   top: 0px;
   padding-top: 10px;
@@ -596,6 +596,39 @@ label:has(.helper-toggle-switch)
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.helper-tag-container {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.helper-tag {
+  background-color: #d2553d;
+  color: white;
+  padding: 2px 5px 2px 10px;
+  margin: 5px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.helper-tag .helper-tag-remove-btn {
+  background-color: transparent;
+  border: none;
+  color: white;
+  margin-left: 5px;
+  cursor: pointer;
+}
+
+.helper-input {
+  width: 80%;
+  height: 2em;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding-left: 5px;
+  margin-left: 5px;
 }
     `);
 
@@ -1603,12 +1636,15 @@ label:has(.helper-toggle-switch)
 
     }
 
-    function modifyForumPage() {
-        if (hs.enable_block_thread_by_keyword) {
+    function updateForumPage() {
+        if (hs.enable_block_keyword) {
             qSA('[id^=normalthread]').forEach(thread => {
-                const title = qS('a.s.xst', thread).innerText.trim();
+                const title = qS('a.s.xst', thread).innerText.trim().toLowerCase();
                 if (hs.block_keywords.some(keyword => title.includes(keyword))) {
                     thread.style.display = 'none';
+                }
+                else {
+                    thread.style.display = '';
                 }
             });
         }
@@ -1637,11 +1673,10 @@ label:has(.helper-toggle-switch)
                 }
                 if (location_params.mod == 'forumdisplay') {
                     if (init) {
-                        modifyForumPage();
                         // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
                         // modifyPostOnSubmit('fastpostform', original_smilies_types);
                     }
-
+                    updateForumPage();
                 }
             }
 
@@ -1875,7 +1910,10 @@ label:has(.helper-toggle-switch)
         user_title.textContent = '用户';
         thread_title.textContent = '关注内容';
         follow_title.textContent = '操作';
-        [user_title, thread_title, follow_title].forEach(e => title_row.appendChild(e));
+        [user_title, thread_title, follow_title].forEach(e => {
+            title_row.appendChild(e);
+            e.className = 'helper-sticky-header';
+        });
 
         const table_body = docre('tbody');
         table.appendChild(table_body);
@@ -1928,7 +1966,56 @@ label:has(.helper-toggle-switch)
     }
 
     function createBlockKeywordTab() {
+        const div = docre('div');
+        const title_div = docre('div');
+        title_div.className = 'helper-sticky-header';
+        const input = docre('input');
+        input.type = 'text';
+        input.placeholder = '输入屏蔽词并回车提交';
+        input.className = 'helper-input';
+        input.addEventListener('keyup', e => {
+            if (e.key == 'Enter') {
+                const keyword = input.value.trim().toLowerCase();
+                if (keyword.length > 0 && !hs.block_keywords.includes(keyword)) {
+                    hs.block_keywords.push(keyword);
+                    GM.setValue('helper_setting', hs);
+                    renderTags();
+                    updatePageDoc();
+                }
+                input.value = '';
+            }
+        });
+        div.appendChild(input);
 
+        const tag_container = docre('div');
+        tag_container.className = 'helper-tag-container';
+
+        const renderTags = () => {
+            tag_container.innerHTML = '';
+            hs.block_keywords.forEach((keyword, index) => {
+                const tag = docre('div');
+                tag.className = 'helper-tag';
+                tag.textContent = keyword;
+
+                const remove_btn = docre('button');
+                remove_btn.type = 'button';
+                remove_btn.className = 'helper-tag-remove-btn';
+                remove_btn.textContent = '×';
+                remove_btn.addEventListener('click', () => {
+                    hs.block_keywords.splice(index, 1);
+                    GM.setValue('helper_setting', hs);
+                    renderTags();
+                    updatePageDoc();
+                });
+
+                tag.appendChild(remove_btn);
+                tag_container.appendChild(tag);
+            });
+        };
+        renderTags();
+        div.appendChild(tag_container);
+
+        return div;
     }
 
     function createDebugTab() {
@@ -1988,7 +2075,7 @@ label:has(.helper-toggle-switch)
         });
 
         // 开启屏蔽词
-        components.push({ 'title': '关键词屏蔽', 'type': 'switch', 'args': ['enable_block_keyword'] });
+        components.push({ 'title': '关键词屏蔽', 'type': 'switch', 'args': ['enable_block_keyword', updatePageDoc] });
         // 开启黑名单
 
         components.forEach(component => {
@@ -2442,6 +2529,7 @@ label:has(.helper-toggle-switch)
 // hover text
 // innertext
 // getSpaceAuthor
+// getPostsInPage
 
 // 搁置: 不会
 // TODO 上传表情
