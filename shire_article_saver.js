@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.2.3
+// @version      0.10.2.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -162,7 +162,7 @@
     // ========================================================================================================
     // GM Value 工具
     // ========================================================================================================
-    function updateGMListElements(list, elem, status, equal = (a, b) => a == b) {
+    function updateListElements(list, elem, status, equal = (a, b) => a == b) {
         // 根据equal判断独立elem，根据status判断新list中是否有elem
         if (status && !list.some(e => equal(e, elem))) { // 存入元素
             list.push(elem);
@@ -527,7 +527,8 @@ label:has(> .helper-toggle-switch)
   transition: background-color 0.3s;
 }
 
-.helper-f-button {
+.helper-f-button,
+.helper-b-button {
   padding: 2px;
   width: 5.5rem;
   cursor: pointer;
@@ -537,12 +538,28 @@ label:has(> .helper-toggle-switch)
   transition: background-color 0.3s ease;
 }
 
+.helper-b-button {
+  background-color: #d2553d;
+}
+
+.helper-b-button::before {
+  content: '已屏蔽';
+}
+
 .helper-f-button:not([data-hfb-followed]) {
   background-color: #1772f6;
 }
 
 .helper-f-button:not([data-hfb-followed]):hover {
   background-color: #0063e6;
+}
+
+.helper-f-button[data-hfb-followed] {
+  background-color: #8491a5;
+}
+
+.helper-f-button[data-hfb-followed]:hover {
+  background-color: #758195;
 }
 
 .helper-f-button.hfb-normal:not([data-hfb-followed])::before {
@@ -555,14 +572,6 @@ label:has(> .helper-toggle-switch)
 
 .helper-f-button.hfb-thread:not([data-hfb-followed])::before {
   content: '在本贴关注';
-}
-
-.helper-f-button[data-hfb-followed] {
-  background-color: #8491a5;
-}
-
-.helper-f-button[data-hfb-followed]:hover {
-  background-color: #758195;
 }
 
 .helper-f-button.hfb-normal[data-hfb-followed]::before {
@@ -1311,14 +1320,14 @@ th.helper-sortby::after {
     }
 
     // ========================================================================================================
-    // 关注与自动回复
+    // 关注、屏蔽与自动回复
     // ========================================================================================================
     // 根据checkbox的状态更新value对应的数组
     // value/id: tid/pid, uid/tid
     function recordCheckbox(value, id, checked) {
         let checked_list = GM_getValue(value, []);
         id = id.split('_check_')[1];
-        updateGMListElements(checked_list, id, checked);
+        updateListElements(checked_list, id, checked);
         updateGMList(value, checked_list);
     }
 
@@ -1331,7 +1340,7 @@ th.helper-sortby::after {
         for (let checkbox of checkbox_posts) {
             checkbox.checked = checked_for_all;
             const id = checkbox.id.split('_check_')[1];
-            updateGMListElements(checked_list, id, checked_for_all);
+            updateListElements(checked_list, id, checked_for_all);
         }
         updateGMList(`${tid}_checked_posts`, checked_list);
     }
@@ -1341,17 +1350,37 @@ th.helper-sortby::after {
     // 若tid==-1, 则关注用户的所有回复
     function recordFollow(info, followed) {
         let followed_threads = GM_getValue(info.uid + '_followed_threads', []);
-        updateGMListElements(followed_threads, { tid: info.tid, title: info.title, last_tpid: 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
+        updateListElements(followed_threads, { tid: info.tid, title: info.title, last_tpid: 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
         updateGMList(info.uid + '_followed_threads', followed_threads);
 
         let followed_users = GM_getValue('followed_users', []);
-        updateGMListElements(followed_users, { uid: info.uid, name: info.name }, followed_threads.length > 0, (a, b) => a.uid == b.uid);
+        updateListElements(followed_users, { uid: info.uid, name: info.name }, followed_threads.length > 0, (a, b) => a.uid == b.uid);
         updateGMList('followed_users', followed_users);
 
         let followed_num = GM_getValue('followed_num', 0);
         followed_num += followed ? 1 : -1;
         followed_num = followed_num < 0 ? 0 : followed_num;
         GM.setValue('followed_num', followed_num);
+    }
+
+    function blockUser(uid, name) {
+        hs.blacklist = updateListElements(hs.blacklist, { uid, name }, true, (a, b) => a.uid == b.uid);
+        GM.setValue('helper_settings', hs);
+        updateGMList(`${uid}_followed_threads`, []);
+        const followed_users = GM_getValue('followed_users', []);
+        updateListElements(followed_users, { uid, name }, false, (a, b) => a.uid == b.uid);
+        updateGMList('followed_users', followed_users);
+    }
+
+    function setFollowButtonStatus() {
+        for (let { uid } of hs.blacklist) {
+            qSA(`.helper-f-button[data-hfb-uid='${uid}']`).forEach(e => {
+                e.removeAttribute('data-hfb-followed');
+                e.classList.remove('helper-f-button');
+                e.classList.add('helper-b-button');
+                e.replaceWith(e.cloneNode(true));
+            });
+        }
     }
 
     function autoReply(timeout = 2000) {
@@ -1433,7 +1462,7 @@ th.helper-sortby::after {
         follow_btn.className = 'helper-f-button';
         follow_btn.setAttribute('data-hfb-uid', info.uid);
         if (followed) {
-            follow_btn.setAttribute('data-hfb-followed');
+            follow_btn.setAttribute('data-hfb-followed', '');
         }
 
         let follow_type = '';
@@ -1653,15 +1682,18 @@ th.helper-sortby::after {
             const profile_card = qS('[id^=userinfo] > div.i.y ', post);
             insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, name), qS('div:first-child', profile_card));
 
-            if (hs.enable_notification) {
+            const post_follow_btn = createFollowButton({ uid, name, tid, title: thread_title });
+            post_follow_btn.classList.add('o');
+            user_card.appendChild(post_follow_btn);
 
-                const post_follow_btn = createFollowButton({ uid, name, tid, title: thread_title });
-                post_follow_btn.classList.add('o');
-                user_card.appendChild(post_follow_btn);
+            const profile_icon = qS('div.imicn', profile_card);
+            profile_icon.appendChild(createFollowButton({ uid, name, tid: 0 }));
+            insertInteractiveLink(' 屏蔽用户', () => {
+                blockUser(uid, name);
+                setFollowButtonStatus();
+            }, profile_icon);
 
-                const profile_icon = qS('div.imicn', profile_card);
-                profile_icon.appendChild(createFollowButton({ uid, name, tid: 0 }));
-            }
+            setFollowButtonStatus();
         }
 
         const label = docre('label');
@@ -1770,9 +1802,8 @@ th.helper-sortby::after {
             const name = getSpaceAuthor();
             const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space' };
             insertLink(`${name}的主题`, URL_params, toptb);
-            if (hs.enable_notification) {
-                toptb.appendChild(createFollowButton({ uid, name, tid: type == 'reply' ? -1 : 0 }));
-            }
+            toptb.appendChild(createFollowButton({ uid, name, tid: type == 'reply' ? -1 : 0 }));
+            setFollowButtonStatus();
         }
 
         if (mod == 'space' && uid == GM_info.script.author && URL_params.do == 'wall' && loc == 'home') {
@@ -1846,11 +1877,11 @@ th.helper-sortby::after {
     function updateForumPage() {
         qSA('[id^=normalthread]').forEach(thread => {
             const title = qS('a.s.xst', thread).innerText.trim().toLowerCase();
-            const user = qS('td.by cite a', thread).innerText.trim();
+            const uid = qS('td.by cite a', thread).href.parseURL().uid;
             if (hs.enable_block_keyword && hs.block_keywords.some(keyword => title.includes(keyword))) {
                 thread.style.display = 'none';
             }
-            else if (hs.enable_blacklist && hs.blacklist.includes(user)) {
+            else if (hs.enable_blacklist && hs.blacklist.some(e => e.uid == uid)) {
                 thread.style.display = 'none';
             }
             else {
@@ -2072,16 +2103,21 @@ th.helper-sortby::after {
         }
     }
 
-    function createHeperTagsContainer(tag_list, onremove = null) {
+    function createHeperTagsContainer(tag_list, onremove = null, value_attr = null) {
         const tag_container = docre('div');
         tag_container.className = 'helper-tag-container';
 
         const renderTags = () => {
             tag_container.innerHTML = '';
-            tag_list.forEach((keyword, index) => {
+            tag_list.forEach((tag_info, index) => {
                 const tag = docre('div');
                 tag.className = 'helper-tag';
-                tag.textContent = keyword;
+                if (value_attr && (value_attr in tag_info)) {
+                    tag.textContent = tag_info[value_attr];
+                }
+                else {
+                    tag.textContent = tag_info;
+                }
 
                 const remove_btn = docre('button');
                 remove_btn.type = 'button';
@@ -2213,7 +2249,7 @@ th.helper-sortby::after {
     }
 
     function createBlacklistTab() {
-        return createHeperTagsContainer(hs.blacklist, () => GM.setValue('helper_setting', hs));
+        return createHeperTagsContainer(hs.blacklist, () => GM.setValue('helper_setting', hs), 'name');
     }
 
     function createDebugTab() {
@@ -2419,7 +2455,7 @@ th.helper-sortby::after {
                         const last_tpid = new_infos.last_tpid;
 
                         if (new_threads.length > 0) {
-                            updateGMListElements(followed_threads, { tid: thread.tid, last_tpid, title: thread.title }, true, (a, b) => a.tid == b.tid);
+                            updateListElements(followed_threads, { tid: thread.tid, last_tpid, title: thread.title }, true, (a, b) => a.tid == b.tid);
                             updateGMList(user.uid + '_followed_threads', followed_threads);
                         }
 
@@ -2734,14 +2770,14 @@ th.helper-sortby::after {
     insertHelperLink();
 
     const hs = GM_getValue('helper_setting', {});
-    let default_update = false;
+    let default_updated = false;
     for (let key in helper_default_setting) {
         if (!(key in hs)) {
             hs[key] = helper_default_setting[key];
-            default_update = true;
+            default_updated = true;
         }
     }
-    if (default_update) {
+    if (default_updated) {
         GM.setValue('helper_setting', hs);
     }
 
@@ -2761,17 +2797,17 @@ th.helper-sortby::after {
 // FIXME op未加载的情况
 // FIXME 参见tg详情
 // FIXME chrome支持
-// FIXME 更新通知、代表作中标题的精华标记
+// FIXME 更新通知、代表作中标题的精华、置顶、关闭标记
 // TODO 测试自动回复
 // FIXME merged save 没有帖子分割线
 // FIXME getSpaceAuthor
 // FIXME 使用username的空间
 // FIXME 自动回复内容
+// FIXME 隐藏调试tab
+// FIXME edge黑名单丢失
 
 // 功能更新：优先
-// TODO 黑名单按钮
 // TODO 合并保存选项
-// TODO 精华推荐
 
 // 功能更新：末优先
 // TODO 用户改名提醒
@@ -2817,11 +2853,12 @@ th.helper-sortby::after {
 // TODO 表情代码
 
 // 搁置: 麻烦
-// TODO 置顶重复
+// FIXME 置顶重复
+// FIXME 历史消息重复
+// FIXME 手动输入超标page, isFirstPage会判断出错（等其它非标URL的情况）
 // TODO md格式
-// TODO 历史消息重复
 // TODO NSFW（跳过题图）
-// TODO 手动输入超标page, isFirstPage会判断出错（等其它非标URL的情况）
+// TODO 精华推荐
 
 // 搁置：负载
 // TODO 上一集、下一集
