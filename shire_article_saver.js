@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.0.5
+// @version      0.10.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -616,6 +616,10 @@ label:has(.helper-toggle-switch)
   top: 0px;
   padding-top: 10px;
   background-color: white;
+}
+
+th.helper-sortby::after {
+  content: '▼';
 }
 
 .helper-spinner {
@@ -1605,6 +1609,7 @@ label:has(.helper-toggle-switch)
             const post_info = getPostInfo(post);
             const pid = post_info.post_id;
             const uid = post_info.post_auth_id;
+            const name = post_info.post_auth;
 
             const label = docre('label');
             const checkbox = docre('input');
@@ -1622,13 +1627,15 @@ label:has(.helper-toggle-switch)
             all_checked = all_checked && checkbox.checked;
 
             const user_card = qS('tbody > tr:nth-child(1) > td.pls > div', post)
-            const post_follow_btn = createFollowButton({ uid, name: post_info.post_auth, tid, title: thread_title });
+            const post_follow_btn = createFollowButton({ uid, name, tid, title: thread_title });
             post_follow_btn.classList.add('o');
             user_card.appendChild(post_follow_btn);
             user_card.appendChild(label);
 
-            const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
-            profile_icon.appendChild(createFollowButton({ uid, name: post_info.post_auth, tid: 0 }));
+            const profile_card = qS('[id^=userinfo] > div.i.y ', post);
+            insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, name), qS('div:first-child', profile_card));
+            const profile_icon = qS('div.imicn', profile_card);
+            profile_icon.appendChild(createFollowButton({ uid, name, tid: 0 }));
         }
 
         const label = docre('label');
@@ -2508,34 +2515,60 @@ label:has(.helper-toggle-switch)
             return div;
         }
 
-        const table = docre('table');
-        table.className = 'helper-popup-table';
-        const table_head = docre('thead');
-        table.appendChild(table_head);
-        const title_row = table_head.insertRow();
+        const updateTable = sort_by => {
+            const table = docre('table');
+            table.className = 'helper-popup-table';
+            const table_head = docre('thead');
+            table.appendChild(table_head);
+            const title_row = table_head.insertRow();
 
-        const thread_title = docre('th');
-        const view_title = docre('th');
-        const reply_title = docre('th');
-        thread_title.textContent = '主题';
-        view_title.textContent = '浏览';
-        reply_title.textContent = '回复';
-        [thread_title, view_title, reply_title].forEach(e => title_row.appendChild(e));
+            const thread_title = docre('th');
+            const view_title = docre('th');
+            const reply_title = docre('th');
+            thread_title.textContent = '主题';
+            view_title.textContent = '浏览';
+            reply_title.textContent = '回复';
+            switch (sort_by) {
+                case 'reply':
+                    reply_title.className = 'helper-sortby';
+                    masterpiece_list = masterpiece_info.max_reply_threads;
+                    view_title.addEventListener('click', () => {
+                        div.innerHTML = '';
+                        updateTable('view');
+                    });
+                    view_title.style.cursor = 'pointer';
+                    break;
+                case 'view':
+                default:
+                    view_title.className = 'helper-sortby';
+                    masterpiece_list = masterpiece_info.max_view_threads;
+                    reply_title.addEventListener('click', () => {
+                        div.innerHTML = '';
+                        updateTable('reply');
+                    });
+                    reply_title.style.cursor = 'pointer';
+            }
 
-        const table_body = docre('tbody');
-        table.appendChild(table_body);
+            [thread_title, view_title, reply_title].forEach(e => title_row.appendChild(e));
+
+            const table_body = docre('tbody');
+            table.appendChild(table_body);
 
 
-        for (let thread of masterpiece_list) {
-            const row = table_body.insertRow();
-            const [thread_cell, view_cell, reply_cell] = [0, 1, 2].map(i => row.insertCell(i));
+            for (let thread of masterpiece_list) {
+                const row = table_body.insertRow();
+                const [thread_cell, view_cell, reply_cell] = [0, 1, 2].map(i => row.insertCell(i));
 
-            const thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: thread.tid };
-            insertLink(thread.title, thread_URL_params, thread_cell);
-            view_cell.textContent = thread.views;
-            reply_cell.textContent = thread.replies;
-        }
-        div.appendChild(table);
+                const thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: thread.tid };
+                insertLink(thread.title, thread_URL_params, thread_cell);
+                view_cell.textContent = thread.views;
+                reply_cell.textContent = thread.replies;
+            }
+            div.appendChild(table);
+        };
+
+        updateTable();
+
         return div;
     }
 
@@ -2552,7 +2585,7 @@ label:has(.helper-toggle-switch)
         }
         content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
 
-        const insertFootnote = () => {
+        const updateFootnote = () => {
             const footnote = docre('div');
             content_container.appendChild(footnote);
             footnote.className = 'helper-footnote';
@@ -2565,13 +2598,13 @@ label:has(.helper-toggle-switch)
                     masterpiece_info = await updateMasterpiece(uid);
                     content_container.innerHTML = '';
                     content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
-                    insertFootnote();
+                    updateFootnote();
                 }, footnote);
                 reload_link.style.color = 'inherit !important';
             }
         };
 
-        insertFootnote();
+        updateFootnote();
     }
 
     async function updateMasterpiece(uid) {
@@ -2722,8 +2755,7 @@ label:has(.helper-toggle-switch)
 // 功能优化：优先
 // TODO 关注按钮联动
 // TODO 黑名单按钮
-// TODO 帖子浮动名片、版面浮动名片、好友浮动名片添加代表作
-// TODO 代表作按回复排序
+// TODO 版面浮动名片、好友浮动名片添加代表作
 // TODO 代表作标题链接、省略
 // TODO 代表作进度条
 
