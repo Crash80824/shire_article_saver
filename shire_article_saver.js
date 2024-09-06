@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.0.3
+// @version      0.10.0.4
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -130,6 +130,18 @@
         const match = str.match(regex);
         return match ? [match[1], match[2]] : [str, ''];
     };
+    const timeAgo = timestamp => {
+        const diff = Date.now() - timestamp;
+        const units = [
+            { info: '年前', dt: 365 * 24 * 60 * 60 * 1000 },
+            { info: '个月前', dt: 30 * 24 * 60 * 60 * 1000 },
+            { info: '天前', dt: 24 * 60 * 60 * 1000 },
+            { info: '小时前', dt: 60 * 60 * 1000 },
+            { info: '分钟前', dt: 60 * 1000, bound: 5 * 60 * 1000 }
+        ];
+        const unit = units.find(({ dt, bound }) => diff >= (bound !== undefined ? bound : dt));
+        return unit ? `${Math.floor(diff / unit.dt)}${unit.info}` : '刚刚';
+    }
 
     const checkVariableDefined = (variable_name, timeout = 15000, time_interval = 100) => new Promise((resolve, reject) => {
         const startTime = Date.now();
@@ -2512,15 +2524,19 @@ label:has(.helper-toggle-switch)
             const footnote = docre('div');
             content_container.appendChild(footnote);
             footnote.className = 'helper-footnote';
-            footnote.textContent = `缓存时间：${new Date(masterpiece_info.update_time).toLocaleString()} | `;
-            const reload_link = insertInteractiveLink('立即刷新', async () => {
-                content_container.appendChild(createLoadingOverlay());
-                masterpiece_info = await updateMasterpiece(uid);
-                content_container.innerHTML = '';
-                content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
-                insertFootnote();
-            }, footnote);
-            reload_link.style.color = 'inherit';
+            const update_time_ago = timeAgo(masterpiece_info.update_time);
+            footnote.textContent = `缓存时间：${update_time_ago}`;
+            if (update_time_ago != '刚刚') {
+                footnote.textContent += ' | ';
+                const reload_link = insertInteractiveLink('立即刷新', async () => {
+                    content_container.appendChild(createLoadingOverlay());
+                    masterpiece_info = await updateMasterpiece(uid);
+                    content_container.innerHTML = '';
+                    content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
+                    insertFootnote();
+                }, footnote);
+                reload_link.style.color = 'inherit !important';
+            }
         };
 
         insertFootnote();
@@ -2668,12 +2684,13 @@ label:has(.helper-toggle-switch)
 
 // 功能优化
 // TODO 关注按钮联动
-// TODO 按钮hover
+// TODO 设置按钮hover
 // TODO 代表作按回复排序
 // TODO 无代表作时居中
 // TODO 代表作标题链接、省略
 // TODO 代表作进度条
-// TODO 版面浮动名片、好友浮动名片添加代表作
+// TODO 代表作时间显示
+// TODO 帖子浮动名片、版面浮动名片、好友浮动名片添加代表作
 // TODO 版面浮动名片、好友浮动名片添加关注
 // TODO 黑名单等级
 // TODO 黑名单按钮
@@ -2703,7 +2720,6 @@ label:has(.helper-toggle-switch)
 // 保证弹窗弹出
 // debug log
 // TODO changePageAllCheckboxs
-// TODO setting里不存[]
 
 // 搁置: 不会
 // TODO 上传表情
