@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.2.1
+// @version      0.10.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1365,7 +1365,7 @@ th.helper-sortby::after {
 
     function blockUser(uid, name) {
         hs.blacklist = updateListElements(hs.blacklist, { uid, name }, true, (a, b) => a.uid == b.uid);
-        GM.setValue('helper_settings', hs);
+        GM.setValue('helper_setting', hs);
         updateGMList(`${uid}_followed_threads`, []);
         const followed_users = GM_getValue('followed_users', []);
         updateListElements(followed_users, { uid, name }, false, (a, b) => a.uid == b.uid);
@@ -2804,13 +2804,10 @@ th.helper-sortby::after {
 // FIXME 使用username的空间
 // FIXME 自动回复内容
 // FIXME 隐藏调试tab
-// FIXME edge黑名单丢失
+// FIXME 无选中时会下载空文件
 
 // 功能更新：优先
 // TODO 合并保存选项
-
-// 功能更新：末优先
-// TODO 用户改名提醒
 
 // 功能优化：优先
 // TODO 代表作标题链接、省略
@@ -2832,7 +2829,6 @@ th.helper-sortby::after {
 // TODO 显示按钮和订阅更新分开设置
 // TODO 代表作数量
 // TODO 历史消息上限
-// TODO 无选中时会下载空文件
 // TODO 插入设置
 // TODO 恢复默认
 
@@ -2859,6 +2855,7 @@ th.helper-sortby::after {
 // TODO md格式
 // TODO NSFW（跳过题图）
 // TODO 精华推荐
+// TODO 用户改名提醒
 
 // 搁置：负载
 // TODO 上一集、下一集
