@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.2
+// @version      0.10.2.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1637,19 +1637,22 @@ th.helper-sortby::after {
             const label_text = document.createTextNode('保存本层');
             label.className = 'helper-checkbox-label o';
             label.appendChild(label_text);
+            user_card.appendChild(label);
 
             all_checked = all_checked && checkbox.checked;
 
-            const user_card = qS('tbody > tr:nth-child(1) > td.pls > div', post)
-            const post_follow_btn = createFollowButton({ uid, name, tid, title: thread_title });
-            post_follow_btn.classList.add('o');
-            user_card.appendChild(post_follow_btn);
-            user_card.appendChild(label);
-
             const profile_card = qS('[id^=userinfo] > div.i.y ', post);
             insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, name), qS('div:first-child', profile_card));
-            const profile_icon = qS('div.imicn', profile_card);
-            profile_icon.appendChild(createFollowButton({ uid, name, tid: 0 }));
+
+            if (hs.enable_notification) {
+                const user_card = qS('tbody > tr:nth-child(1) > td.pls > div', post)
+                const post_follow_btn = createFollowButton({ uid, name, tid, title: thread_title });
+                post_follow_btn.classList.add('o');
+                user_card.appendChild(post_follow_btn);
+
+                const profile_icon = qS('div.imicn', profile_card);
+                profile_icon.appendChild(createFollowButton({ uid, name, tid: 0 }));
+            }
         }
 
         const label = docre('label');
@@ -1758,7 +1761,9 @@ th.helper-sortby::after {
             const name = getSpaceAuthor();
             const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space' };
             insertLink(`${name}的主题`, URL_params, toptb);
-            toptb.appendChild(createFollowButton({ uid, name, tid: type == 'reply' ? -1 : 0 }));
+            if (hs.enable_notification) {
+                toptb.appendChild(createFollowButton({ uid, name, tid: type == 'reply' ? -1 : 0 }));
+            }
         }
 
         if (mod == 'space' && uid == GM_info.script.author && URL_params.do == 'wall' && loc == 'home') {
@@ -2795,6 +2800,7 @@ th.helper-sortby::after {
 // 保证弹窗弹出
 // debug log
 // TODO changePageAllCheckboxs
+// TODO css classname
 
 // 搁置: 不会
 // TODO 上传表情
