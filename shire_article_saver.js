@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.0.2
+// @version      0.10.0.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -28,7 +28,7 @@
     'use strict';
 
     // ========================================================================================================
-    // 常量和简单的工具函数
+    // 高频工具
     // ========================================================================================================
     const qS = (selector, scope = document) => scope.querySelector(selector);
     const qSA = (selector, scope = document) => scope.querySelectorAll(selector);
@@ -41,12 +41,41 @@
         return obj;
     };
 
+    // ========================================================================================================
+    // 判断脚本启用条件
+    // ========================================================================================================
     const location_params = location.href.parseURL();
     const is_desktop = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
 
     if (!is_desktop) {
         return;
     }
+
+    // ========================================================================================================
+    // 常量
+    // ========================================================================================================
+    const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
+    const large_page_num = 1024;
+    const magic_num = Math.sqrt(large_page_num);
+    const extensionMap = {
+        'image/jpeg': 'jpg',
+        'image/bmp': 'bmp',
+        'image/png': 'png',
+        'image/gif': 'gif',
+        'image/webp': 'webp',
+        'video/mp4': 'mp4',
+        'video/x-msvideo': 'avi',
+        'video/x-matroska': 'mkv',
+        'video/x-flv': 'flv',
+        'video/mpeg': 'mpg',
+        'video/quicktime': 'mov',
+        'audio/mp3': 'mp3',
+        'audio/mpeg': 'mp3',
+        'audio/wav': 'wav',
+        'audio/wave': 'wav',
+        'audio/x-wav': 'wav',
+        'text/plain': 'txt'
+    };
 
     const helper_default_setting = {
         // 消息通知设置
@@ -84,29 +113,9 @@
         blacklist: [],
     };
 
-    const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
-    const large_page_num = 1024;
-    const magic_num = Math.sqrt(large_page_num);
-    const extensionMap = {
-        'image/jpeg': 'jpg',
-        'image/bmp': 'bmp',
-        'image/png': 'png',
-        'image/gif': 'gif',
-        'image/webp': 'webp',
-        'video/mp4': 'mp4',
-        'video/x-msvideo': 'avi',
-        'video/x-matroska': 'mkv',
-        'video/x-flv': 'flv',
-        'video/mpeg': 'mpg',
-        'video/quicktime': 'mov',
-        'audio/mp3': 'mp3',
-        'audio/mpeg': 'mp3',
-        'audio/wav': 'wav',
-        'audio/wave': 'wav',
-        'audio/x-wav': 'wav',
-        'text/plain': 'txt'
-    };
-
+    // ========================================================================================================
+    // 通用工具
+    // ========================================================================================================
     const commonPrefix = ((str1, str2) => {
         return str1 === '' ? str2 : (str2 === '' ? str1 : (() => {
             let i = 0;
@@ -138,22 +147,33 @@
         check();
     })
 
-    const hasReadPermission = (doc = document) => !Boolean(qS('#messagetext', doc));
-    const isFirstPage = (doc = document) => { const page = doc.URL.parseURL().page; return !Boolean(page) || page == 1; }
-    const hasThreadInPage = (doc = document) => { const thread_list = qS('#delform > table > tbody > tr:not(.th)', doc); return Boolean(thread_list) && thread_list.childNodes.length > 3; }
+    // ========================================================================================================
+    // GM Value 工具
+    // ========================================================================================================
+    function updateGMListElements(list, elem, status, equal = (a, b) => a == b) {
+        // 根据equal判断独立elem，根据status判断新list中是否有elem
+        if (status && !list.some(e => equal(e, elem))) { // 存入元素
+            list.push(elem);
+        }
+        if (list.some(e => equal(e, elem))) {
+            const new_list = list.filter(e => !equal(e, elem)); // 删除元素
+            list.length = 0;
+            list.push(...new_list);
+            if (status) {
+                list.push(elem); // 更新元素
+            }
+        }
+        return list;
+    }
 
-    const getPostId = post => post.id.slice(3);
-    const getPostsInPage = (page_doc = document) => qSA('[id^=pid]', page_doc);
-    const getSpaceAuthor = () => {
-        const space_do = location.href.parseURL().do;
-        if (typeof space_do === 'undefined') {
-            return qS('meta[name="keywords"]').content.slice(0, -3);
+    function updateGMList(list_name, list) {
+        if (list.length == 0) {
+            GM.deleteValue(list_name);
         }
         else {
-            const author_name = qS('#pcd > div > div > h2 > a');
-            return author_name ? author_name.textContent : '';
+            GM.setValue(list_name, list);
         }
-    };
+    }
 
     // ========================================================================================================
     // 自定义表情
@@ -649,79 +669,26 @@ label:has(.helper-toggle-switch)
 }
     `);
 
-
     // ========================================================================================================
-    // 更新GM Value的函数
+    // 获取页面信息
     // ========================================================================================================
-    function updateGMListElements(list, elem, status, equal = (a, b) => a == b) {
-        // 根据equal判断独立elem，根据status判断新list中是否有elem
-        if (status && !list.some(e => equal(e, elem))) { // 存入元素
-            list.push(elem);
-        }
-        if (list.some(e => equal(e, elem))) {
-            const new_list = list.filter(e => !equal(e, elem)); // 删除元素
-            list.length = 0;
-            list.push(...new_list);
-            if (status) {
-                list.push(elem); // 更新元素
-            }
-        }
-        return list;
-    }
+    const hasReadPermission = (doc = document) => !Boolean(qS('#messagetext', doc));
+    const isFirstPage = (doc = document) => { const page = doc.URL.parseURL().page; return !Boolean(page) || page == 1; }
+    const hasThreadInPage = (doc = document) => { const thread_list = qS('#delform > table > tbody > tr:not(.th)', doc); return Boolean(thread_list) && thread_list.childNodes.length > 3; }
 
-    async function updateGMList(list_name, list) {
-        if (list.length == 0) {
-            GM.deleteValue(list_name);
+    const getPostId = post => post.id.slice(3);
+    const getPostsInPage = (page_doc = document) => qSA('[id^=pid]', page_doc);
+    const getSpaceAuthor = () => {
+        const space_do = location.href.parseURL().do;
+        if (typeof space_do === 'undefined') {
+            return qS('meta[name="keywords"]').content.slice(0, -3);
         }
         else {
-            GM.setValue(list_name, list);
+            const author_name = qS('#pcd > div > div > h2 > a');
+            return author_name ? author_name.textContent : '';
         }
-    }
+    };
 
-    // 根据checkbox的状态更新value对应的数组
-    // value/id: tid/pid, uid/tid
-    function recordCheckbox(value, id, checked) {
-        let checked_list = GM_getValue(value, []);
-        id = id.split('_check_')[1];
-        updateGMListElements(checked_list, id, checked);
-        updateGMList(value, checked_list);
-    }
-
-    function changePageAllCheckboxs() {
-        const tid = location.href.parseURL().tid;
-        const checkbox_page = qS('#page_checked_all');
-        const checked_for_all = checkbox_page.checked;
-        const checkbox_posts = qSA('input[id^="post_check_"]');
-        let checked_list = GM_getValue(`${tid}_checked_posts`, []);
-        for (let checkbox of checkbox_posts) {
-            checkbox.checked = checked_for_all;
-            const id = checkbox.id.split('_check_')[1];
-            updateGMListElements(checked_list, id, checked_for_all);
-        }
-        updateGMList(`${tid}_checked_posts`, checked_list);
-    }
-
-    // 关注某个用户在某个Thread下的回复
-    // 若tid==0，则关注用户的所有主题
-    // 若tid==-1, 则关注用户的所有回复
-    function recordFollow(info, followed) {
-        let followed_threads = GM_getValue(info.uid + '_followed_threads', []);
-        updateGMListElements(followed_threads, { tid: info.tid, title: info.title, last_tpid: 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
-        updateGMList(info.uid + '_followed_threads', followed_threads);
-
-        let followed_users = GM_getValue('followed_users', []);
-        updateGMListElements(followed_users, { uid: info.uid, name: info.name }, followed_threads.length > 0, (a, b) => a.uid == b.uid);
-        updateGMList('followed_users', followed_users);
-
-        let followed_num = GM_getValue('followed_num', 0);
-        followed_num += followed ? 1 : -1;
-        followed_num = followed_num < 0 ? 0 : followed_num;
-        GM.setValue('followed_num', followed_num);
-    }
-
-    // ========================================================================================================
-    // 获取页面或帖子非正文内容的函数
-    // ========================================================================================================
     function getPostInfo(post, page_doc = document) {
         const post_id = getPostId(post);
         const thread_id = qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a', page_doc).href.parseURL().tid;
@@ -785,7 +752,7 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 获取帖子和楼层内容的函数
+    // 获取页面内容
     // ========================================================================================================
     function getPostChildNodeText(child) {
         let text = '';
@@ -910,7 +877,7 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 保存与下载的函数
+    // 保存与下载
     // ========================================================================================================
     function downloadFromURL(target, zip = null, progress = null, dt = null) {
         const url = target.url;
@@ -1158,20 +1125,8 @@ label:has(.helper-toggle-switch)
         GM.deleteValue(uid + '_checked_threads');
     }
 
-    function autoReply(timeout = 2000) {
-        const reply_text = hs.auto_reply_message;
-        const reply_textarea = qS('#fastpostmessage');
-        if (reply_textarea) {
-            reply_textarea.value = reply_text;
-        }
-        const reply_btn = qS('#fastpostsubmit');
-        if (reply_btn) {
-            setTimeout(() => reply_btn.click(), timeout);
-        }
-    }
-
     // ========================================================================================================
-    // 获取关注用户最新动态的函数
+    // 获取用户最新动态
     // ========================================================================================================
     async function getUserNewestPostOrThread(uid, tid, last_tpid = 0) {
         // 返回结构：
@@ -1278,7 +1233,64 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 修改页面的工具函数
+    // 关注与自动回复
+    // ========================================================================================================
+    // 根据checkbox的状态更新value对应的数组
+    // value/id: tid/pid, uid/tid
+    function recordCheckbox(value, id, checked) {
+        let checked_list = GM_getValue(value, []);
+        id = id.split('_check_')[1];
+        updateGMListElements(checked_list, id, checked);
+        updateGMList(value, checked_list);
+    }
+
+    function changePageAllCheckboxs() {
+        const tid = location.href.parseURL().tid;
+        const checkbox_page = qS('#page_checked_all');
+        const checked_for_all = checkbox_page.checked;
+        const checkbox_posts = qSA('input[id^="post_check_"]');
+        let checked_list = GM_getValue(`${tid}_checked_posts`, []);
+        for (let checkbox of checkbox_posts) {
+            checkbox.checked = checked_for_all;
+            const id = checkbox.id.split('_check_')[1];
+            updateGMListElements(checked_list, id, checked_for_all);
+        }
+        updateGMList(`${tid}_checked_posts`, checked_list);
+    }
+
+    // 关注某个用户在某个Thread下的回复
+    // 若tid==0，则关注用户的所有主题
+    // 若tid==-1, 则关注用户的所有回复
+    function recordFollow(info, followed) {
+        let followed_threads = GM_getValue(info.uid + '_followed_threads', []);
+        updateGMListElements(followed_threads, { tid: info.tid, title: info.title, last_tpid: 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
+        updateGMList(info.uid + '_followed_threads', followed_threads);
+
+        let followed_users = GM_getValue('followed_users', []);
+        updateGMListElements(followed_users, { uid: info.uid, name: info.name }, followed_threads.length > 0, (a, b) => a.uid == b.uid);
+        updateGMList('followed_users', followed_users);
+
+        let followed_num = GM_getValue('followed_num', 0);
+        followed_num += followed ? 1 : -1;
+        followed_num = followed_num < 0 ? 0 : followed_num;
+        GM.setValue('followed_num', followed_num);
+    }
+
+    function autoReply(timeout = 2000) {
+        const reply_text = hs.auto_reply_message;
+        const reply_textarea = qS('#fastpostmessage');
+        if (reply_textarea) {
+            reply_textarea.value = reply_text;
+        }
+        const reply_btn = qS('#fastpostsubmit');
+        if (reply_btn) {
+            setTimeout(() => reply_btn.click(), timeout);
+        }
+    }
+
+
+    // ========================================================================================================
+    // 修改页面的工具
     // ========================================================================================================
     function setHidden(elem, hidden = true) {
         if (hidden) {
@@ -1646,20 +1658,6 @@ label:has(.helper-toggle-switch)
         insertInteractiveLink('保存选中  ', saveFunc('checked'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 
-    async function updatePostPages() {
-        const posts_in_page = getPostsInPage();
-        for (let post of posts_in_page) {
-            if (hs.enable_auto_wrap) {
-                const post_content = qS('[id^=postmessage]', post);
-                addWrapInNode(post_content);
-            }
-            else {
-                const post_content = qS('[id^=postmessage]', post);
-                removeWrapInNode(post_content);
-            }
-        }
-    }
-
     async function modifySpacePage() {
         let URL_info = location.href.parseURL();
         const uid = URL_info.uid;
@@ -1712,22 +1710,6 @@ label:has(.helper-toggle-switch)
         }
     }
 
-    function updateForumPage() {
-        qSA('[id^=normalthread]').forEach(thread => {
-            const title = qS('a.s.xst', thread).innerText.trim().toLowerCase();
-            const user = qS('td.by cite a', thread).innerText.trim();
-            if (hs.enable_block_keyword && hs.block_keywords.some(keyword => title.includes(keyword))) {
-                thread.style.display = 'none';
-            }
-            else if (hs.enable_blacklist && hs.blacklist.includes(user)) {
-                thread.style.display = 'none';
-            }
-            else {
-                thread.style.display = '';
-            }
-        });
-    }
-
     function modifyPageDoc(init = true) {
         if (hasReadPermission()) {
             if (location_params.loc == 'forum') {
@@ -1763,12 +1745,47 @@ label:has(.helper-toggle-switch)
         }
     }
 
+    // ========================================================================================================
+    // 更新页面内容
+    // ========================================================================================================
+    async function updatePostPages() {
+        const posts_in_page = getPostsInPage();
+        const follow_list = GM_getValue('followed_list', []);
+        const tid = location.href.parseURL().tid;
+        for (let post of posts_in_page) {
+            if (hs.enable_auto_wrap) {
+                const post_content = qS('[id^=postmessage]', post);
+                addWrapInNode(post_content);
+            }
+            else {
+                const post_content = qS('[id^=postmessage]', post);
+                removeWrapInNode(post_content);
+            }
+        }
+    }
+
+    function updateForumPage() {
+        qSA('[id^=normalthread]').forEach(thread => {
+            const title = qS('a.s.xst', thread).innerText.trim().toLowerCase();
+            const user = qS('td.by cite a', thread).innerText.trim();
+            if (hs.enable_block_keyword && hs.block_keywords.some(keyword => title.includes(keyword))) {
+                thread.style.display = 'none';
+            }
+            else if (hs.enable_blacklist && hs.blacklist.includes(user)) {
+                thread.style.display = 'none';
+            }
+            else {
+                thread.style.display = '';
+            }
+        });
+    }
+
     function updatePageDoc() {
         modifyPageDoc(false);
     }
 
     // ========================================================================================================
-    // 浮动弹窗通用函数
+    // 浮动弹窗通用工具
     // ========================================================================================================
     function removeHelperPopup() {
         const popup = qS('#helper-popup');
@@ -1780,18 +1797,6 @@ label:has(.helper-toggle-switch)
             document.body.removeChild(overlay);
         }
     }
-
-    window.addEventListener('keydown', e => {
-        if (e.key == 'Escape') {
-            const noti_popup = qS('#helper-notification-popup');
-            if (noti_popup && noti_popup.style.display != 'none') {
-                noti_popup.style.display = 'none';
-            }
-            else {
-                removeHelperPopup();
-            }
-        }
-    });
 
     function createCloseButton(onclick) {
         const close_btn = docre('button');
@@ -1881,7 +1886,7 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 助手设置组件相关
+    // 助手设置组件
     // ========================================================================================================
     function createHelperSettingSelect(attr, options = [], texts = []) {
         const status = hs[attr];
@@ -2021,12 +2026,8 @@ label:has(.helper-toggle-switch)
         return tag_container;
     }
 
-    function createHelperFakeSelect(options) {
-
-    }
-
     // ========================================================================================================
-    // 助手设置弹窗相关
+    // 助手设置弹窗
     // ========================================================================================================
     function createFollowListTab() {
         const followed_users = GM_getValue('followed_users', []);
@@ -2314,7 +2315,7 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 消息提醒弹窗相关
+    // 消息提醒弹窗
     // ========================================================================================================
 
     function createNotificationPopup() {
@@ -2440,7 +2441,7 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 代表作弹窗相关
+    // 代表作弹窗
     // ========================================================================================================
     function createMasterpieceTable(masterpiece_info, sortby = 'view') {
         const div = docre('div');
@@ -2560,7 +2561,7 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 插入表情相关
+    // 插入表情
     // ========================================================================================================
     async function modifySmiliesArray(new_smilies) {
         await checkVariableDefined('smilies_array');
@@ -2581,7 +2582,6 @@ label:has(.helper-toggle-switch)
         }
         smilies_switch = new Function('return ' + smilies_switch_str)();
     }
-
 
     async function insertExtraSmilies(id, seditorkey, original_smilies_types, new_smilies) {
         await modifySmiliesArray(new_smilies);
@@ -2607,6 +2607,21 @@ label:has(.helper-toggle-switch)
         // console.log(original_onsubmit_str);
         post.setAttribute('onsubmit', `if(typeof smilies_type == 'object'){for (var typeid in smilies_array){for (var page in smilies_array[typeid]){for(var i in smilies_array[typeid][page]){re=new RegExp(preg_quote(smilies_array[typeid][page][i][1]),"g");this.message.value=this.message.value.replace(re,'[img]'+('${original_smilies_types}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'+ smilies_type['_' + typeid][1] + '/'):smilies_type['_' + typeid][1])+smilies_array[typeid][page][i][2]+"[/img]");}}}}`);
     }
+
+    // ========================================================================================================
+    // 窗口事件
+    // ========================================================================================================
+    window.addEventListener('keydown', e => {
+        if (e.key == 'Escape') {
+            const noti_popup = qS('#helper-notification-popup');
+            if (noti_popup && noti_popup.style.display != 'none') {
+                noti_popup.style.display = 'none';
+            }
+            else {
+                removeHelperPopup();
+            }
+        }
+    });
 
     // ========================================================================================================
     // 主体运行
@@ -2646,6 +2661,7 @@ label:has(.helper-toggle-switch)
 
 // 功能更新：优先
 // TODO 合并保存选项
+// TODO 精华推荐
 
 // 功能更新：末优先
 // TODO 用户改名提醒
@@ -2686,6 +2702,8 @@ label:has(.helper-toggle-switch)
 // getPostsInPage
 // 保证弹窗弹出
 // debug log
+// TODO changePageAllCheckboxs
+// TODO setting里不存[]
 
 // 搁置: 不会
 // TODO 上传表情
