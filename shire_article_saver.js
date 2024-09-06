@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.3
+// @version      0.10.3.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1771,10 +1771,10 @@ th.helper-sortby::after {
 
     async function modifySpacePage() {
         const URL_params = document.URL.parseURL();
-        const { uid, type, view, from, mod, loc } = URL_params;
-        if (!Boolean(type)) {
-            URL_params.type = 'thread'
+        if (!Boolean(URL_params.type)) {
+            URL_params.type = 'thread';
         }
+        const { uid, type, view, from, mod, loc } = URL_params;
 
         if (URL_params.do == 'thread') {
             if (type == 'thread') {
