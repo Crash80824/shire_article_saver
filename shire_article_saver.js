@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.1
+// @version      0.10.1.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -395,12 +395,12 @@ div.helper-center-message {
   padding: 5px;
 }
 
-div:has(.helper-setting-container)
+div:has(> .helper-setting-container)
   .helper-setting-container:not(:last-of-type) {
   border-bottom: 1px solid #ccc;
 }
 
-label:has(.helper-toggle-switch) > input {
+label:has(> .helper-toggle-switch) > input {
   display: none;
 }
 
@@ -424,11 +424,11 @@ label:has(.helper-toggle-switch) > input {
   transition: transform 0.3s;
 }
 
-label:has(.helper-toggle-switch) > input:checked + .helper-toggle-switch {
+label:has(> .helper-toggle-switch) > input:checked + .helper-toggle-switch {
   background-color: #4caf50;
 }
 
-label:has(.helper-toggle-switch)
+label:has(> .helper-toggle-switch)
   > input:checked
   + .helper-toggle-switch::after {
   transform: translateX(15px);
@@ -597,7 +597,7 @@ label:has(.helper-toggle-switch)
   border-collapse: collapse;
 }
 
-.helper-scroll-component:has(.helper-popup-table) {
+.helper-scroll-component:has(> .helper-popup-table) {
   padding-top: 0 !important;
 }
 
@@ -2733,14 +2733,15 @@ th.helper-sortby::after {
 
 
 // 问题修复
-// FIXME 引用内无需换行
+// FIXME 补充内容、引用内无需换行
+// FIXME <br></elem>的情况不是single br
+// FIXME text</div>\n<elem>的情况是换行 例子：漫长的这一天
 // FIXME op未加载的情况
 // FIXME 参见tg详情
 // FIXME chrome支持
 // FIXME 更新通知、代表作中标题的精华标记
 // TODO 测试自动回复
 // FIXME merged save 没有帖子分割线
-// FIXME :has
 // FIXME getSpaceAuthor
 // FIXME 使用username的空间
 // FIXME 自动回复内容
@@ -2755,13 +2756,12 @@ th.helper-sortby::after {
 // 功能优化：优先
 // TODO 关注按钮联动
 // TODO 黑名单按钮
-// TODO 版面浮动名片、好友浮动名片添加代表作
+// TODO 版面浮动名片、好友浮动名片添加代表作、关注、拉黑
 // TODO 代表作标题链接、省略
 // TODO 代表作进度条
 
 // 功能优化
 // TODO 文本链接处理
-// TODO 版面浮动名片、好友浮动名片添加关注
 // TODO 黑名单等级
 // TODO 自动切换全贴/选中？
 // TODO 滚动条悬停显示
