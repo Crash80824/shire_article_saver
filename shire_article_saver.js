@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.0.1
+// @version      0.10.0.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -30,8 +30,8 @@
     // ========================================================================================================
     // 常量和简单的工具函数
     // ========================================================================================================
-    const qS = (selector, parent = document) => parent.querySelector(selector);
-    const qSA = (selector, parent = document) => parent.querySelectorAll(selector);
+    const qS = (selector, scope = document) => scope.querySelector(selector);
+    const qSA = (selector, scope = document) => scope.querySelectorAll(selector);
     const docre = tag => document.createElement(tag);
     String.prototype.parseURL = function () {
         let obj = {};
@@ -50,38 +50,38 @@
 
     const helper_default_setting = {
         // 消息通知设置
-        'enable_notification': true,
-        'max_noti_threads': 3,
-        'important_fids': ['78'],
+        enable_notification: true,
+        max_noti_threads: 3,
+        important_fids: ['78'],
         // 历史记录设置
-        'enable_history': true,
-        'max_history': 100,
+        enable_history: true,
+        max_history: 100,
         // 下载设置
-        'enable_text_download': true,
-        'enable_attach_download': true,
-        'enable_op_download': true,
-        'files_pack_mode': 'no',
-        'default_merge_mode': 'main',
+        enable_text_download: true,
+        enable_attach_download: true,
+        enable_op_download: true,
+        files_pack_mode: 'no',
+        default_merge_mode: 'main',
         // 自动回复设置
-        'enable_auto_reply': true,
-        'auto_reply_message': '收藏了，谢谢楼主分享！',
+        enable_auto_reply: true,
+        auto_reply_message: '收藏了，谢谢楼主分享！',
         // 自动换行设置
-        'enable_auto_wrap': false,
-        'min_wrap_length': 100,
-        'typical_wrap_length': 200,
-        'max_wrap_length': 300,
-        'wrap_dot': '.。？?!！',
-        'wrap_comma': ',，、;；',
+        enable_auto_wrap: false,
+        min_wrap_length: 100,
+        typical_wrap_length: 200,
+        max_wrap_length: 300,
+        wrap_dot: '.。？?!！',
+        wrap_comma: ',，、;；',
         // 代表作设置
-        'data_cache_time': 168 * 3600 * 1000,
-        'masterpiece_num': 10,
-        'default_masterpiece_sort': 'view',
+        data_cache_time: 168 * 3600 * 1000,
+        masterpiece_num: 10,
+        default_masterpiece_sort: 'view',
         // 屏蔽词设置
-        'enable_block_keyword': false,
-        'block_keywords': [],
+        enable_block_keyword: false,
+        block_keywords: [],
         // 黑名单设置
-        'enable_blacklist': false,
-        'blacklist': [],
+        enable_blacklist: false,
+        blacklist: [],
     };
 
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
@@ -122,7 +122,6 @@
         return match ? [match[1], match[2]] : [str, ''];
     };
 
-
     const checkVariableDefined = (variable_name, timeout = 15000, time_interval = 100) => new Promise((resolve, reject) => {
         const startTime = Date.now();
 
@@ -161,7 +160,7 @@
     // ========================================================================================================
     // const original_smilies_types = ['4'];
     // const new_smilies = [];
-    // Element：{'name':name, 'type':type, 'path':path, 'info':[[id, smile_code, file_name, width, height, weight]]}
+    // Element：{name:name, type:type, path:path, info:[[id, smile_code, file_name, width, height, weight]]}
     // Test images: 'data/attachment/album/202207/04/192158kg0urgxtw2805yrs.png','static/image/smiley/ali/1love1.gif',''https://p.upyun.com/demo/webp/webp/animated-gif-0.webp'
 
     // ========================================================================================================
@@ -648,10 +647,6 @@ label:has(.helper-toggle-switch)
   width: 0%;
   transition: width 0.5s ease-in-out
 }
-
-[data-hidden]{
-  display: none !important;
-}
     `);
 
 
@@ -711,11 +706,11 @@ label:has(.helper-toggle-switch)
     // 若tid==-1, 则关注用户的所有回复
     function recordFollow(info, followed) {
         let followed_threads = GM_getValue(info.uid + '_followed_threads', []);
-        updateGMListElements(followed_threads, { 'tid': info.tid, 'title': info.title, 'last_tpid': 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
+        updateGMListElements(followed_threads, { tid: info.tid, title: info.title, last_tpid: 0 }, followed, (a, b) => a.tid == b.tid); // last_tpid==0 表示这是新关注的用户
         updateGMList(info.uid + '_followed_threads', followed_threads);
 
         let followed_users = GM_getValue('followed_users', []);
-        updateGMListElements(followed_users, { 'uid': info.uid, 'name': info.name }, followed_threads.length > 0, (a, b) => a.uid == b.uid);
+        updateGMListElements(followed_users, { uid: info.uid, name: info.name }, followed_threads.length > 0, (a, b) => a.uid == b.uid);
         updateGMList('followed_users', followed_users);
 
         let followed_num = GM_getValue('followed_num', 0);
@@ -735,7 +730,7 @@ label:has(.helper-toggle-switch)
         const sub_time = qS('[id^=authorposton]', post).textContent;
         const post_URL = `${page_doc.baseURI}forum.php?mod=redirect&goto=findpost&ptid=${thread_id}&pid=${post_id}`;
 
-        return { 'post_id': post_id, 'post_auth': post_auth, 'post_auth_id': post_auth_id, 'sub_time': sub_time, 'post_URL': post_URL };
+        return { post_id, post_auth, post_auth_id, sub_time, post_URL };
     }
 
     function getThreadAuthorInfo() {
@@ -750,7 +745,7 @@ label:has(.helper-toggle-switch)
             thread_auth_name = qS('#tath > a:nth-child(1)').title;
             thread_auth_id = qS('#tath > a:nth-child(1)').href.parseURL().uid;
         }
-        return { 'name': thread_auth_name, 'id': thread_auth_id };
+        return { name: thread_auth_name, id: thread_auth_id };
     }
 
     function createURLInDomain(params) {
@@ -759,7 +754,7 @@ label:has(.helper-toggle-switch)
         }
         let url = `https://${location.host}/main/${params.loc}.php?`;
         delete params.loc;
-        for (const [key, value] of Object.entries(params)) {
+        for (let [key, value] of Object.entries(params)) {
             url += `${key}=${value}&`;
         }
         return url;
@@ -839,7 +834,7 @@ label:has(.helper-toggle-switch)
         if (!image_list) {
             image_list = qS('.pattl', post); // 单图
         }
-        let attachments = [];
+        let attach = [];
         if (image_list) {
             image_list = qSA('img', image_list);
             for (let i = 0; i < image_list.length; i++) {
@@ -849,23 +844,23 @@ label:has(.helper-toggle-switch)
                 if (!startWithChinese(img_title)) {
                     img_title = '';
                 }
-                attachments.push({ 'url': img_url, 'title': img_title });
+                attach.push({ url: img_url, title: img_title });
 
             }
         }
 
         let op_body = qS('[id^="op-"][id$="-body"]', post);
-        let ops = [];
+        let op = [];
         if (op_body) {
             const url_list = qSA('a', op_body);
             if (url_list.length > 0) {
                 for (let url of url_list) {
-                    ops.push({ 'url': url.href, 'title': url.textContent });
+                    op.push({ url: url.href, title: url.textContent });
                 }
             }
         }
 
-        return { 'text': text, 'attach': attachments, 'op': ops };
+        return { text, attach, op };
     }
 
     async function getPageContent(page_doc, type = 'main') {
@@ -911,7 +906,7 @@ label:has(.helper-toggle-switch)
                 break;
             }
         }
-        return { 'tid': tid, 'page_id': page_id, 'text': text, 'attach': attach, 'op': op };
+        return { tid, page_id, text, attach, op };
     }
 
     // ========================================================================================================
@@ -1008,7 +1003,7 @@ label:has(.helper-toggle-switch)
         if (hs.enable_text_download) {
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
-            download_list.push({ 'list': [{ 'url': url, 'title': filename, 'is_blob': true }], 'name': '正文' });
+            download_list.push({ list: [{ url, title: filename, is_blob: true }], name: '正文' });
         }
 
         if (hs.enable_attach_download) {
@@ -1017,11 +1012,11 @@ label:has(.helper-toggle-switch)
                 e.title = e.title || `${i + 1}`;
                 e.title = `${filename}_附${e.title}`;
             });
-            download_list.push({ 'list': attach, 'name': '附件' });
+            download_list.push({ list: attach, name: '附件' });
         }
 
         if (hs.enable_op_download) {
-            download_list.push({ 'list': op, 'name': '原创资源保护' });
+            download_list.push({ list: op, name: '原创资源保护' });
         }
 
         download_list = download_list.filter(e => e.list.length > 0);
@@ -1032,7 +1027,7 @@ label:has(.helper-toggle-switch)
         }
 
         createTopProgressbar();
-        let progress = { 'value': 0 };
+        let progress = { value: 0 };
         let promises = [];
 
         switch (hs.files_pack_mode) {
@@ -1098,9 +1093,9 @@ label:has(.helper-toggle-switch)
             }
             filename += '（' + filename_suffix + '）';
 
-            const page_num = (qS('#pgt > div > div > label > span') || { 'title': '共 1 页' }).title.match(/共 (\d+) 页/)[1];
+            const page_num = (qS('#pgt > div > div > label > span') || { title: '共 1 页' }).title.match(/共 (\d+) 页/)[1];
             const promises = Array.from({ length: page_num }, (_, i) => i + 1).map(async page_id => {
-                const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread_id, 'page': page_id };
+                const URL_params = { loc: 'forum', mod: 'viewthread', tid: thread_id, page: page_id };
                 if (is_only_author) {
                     URL_params.authorid = specific_authorid;
                 }
@@ -1121,7 +1116,7 @@ label:has(.helper-toggle-switch)
 
     async function saveMergedThreads() {
         createTopProgressbar();
-        let progress = { 'value': 0 };
+        let progress = { value: 0 };
 
         const uid = location.href.parseURL().uid;
         let checked_threads = GM_getValue(uid + '_checked_threads', []);
@@ -1136,7 +1131,7 @@ label:has(.helper-toggle-switch)
         let dt = Math.ceil(800 * 100 / checked_threads.length) / 1000;
         let filename = '';
         const promises = checked_threads.map(async tid => {
-            const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': tid };
+            const URL_params = { loc: 'forum', mod: 'viewthread', tid };
             const thread_doc = await getPageDocInDomain(URL_params);
             const thread_title = qS('head > title', thread_doc).textContent.slice(0, -8);
             filename = commonPrefix(filename, thread_title);
@@ -1145,7 +1140,7 @@ label:has(.helper-toggle-switch)
                 thread_content = (getPageContent(thread_doc, 'main'));
             }
             else {
-                thread_content = { 'tid': tid, 'text': '没有权限查看此贴\n' };
+                thread_content = { tid, text: '没有权限查看此贴\n' };
             }
             progress.value += dt;
             updateTopProgressbar(progress.value);
@@ -1159,7 +1154,7 @@ label:has(.helper-toggle-switch)
 
         const blob = new Blob([content], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
-        await downloadFromURL({ 'url': url, 'title': filename, 'is_blob': true }, null, progress, 10);
+        await downloadFromURL({ url, title: filename, is_blob: true }, null, progress, 10);
         GM.deleteValue(uid + '_checked_threads');
     }
 
@@ -1180,7 +1175,7 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     async function getUserNewestPostOrThread(uid, tid, last_tpid = 0) {
         // 返回结构：
-        // { 'new': [{ 'tid': tid, 'title': title, 'pids': [],'fid':fid }], 'found': found, 'last_tpid': last_tpid }
+        // { new: [{ tid, title, pids: [], fid }], found, last_tpid }
         // 其中对于对于tid=0的情况，pids为undefined; 对于tid!=0的情况，fid为undefined
         if (tid == 0) {
             return getUserNewestThread(uid, last_tpid);
@@ -1196,7 +1191,7 @@ label:has(.helper-toggle-switch)
     async function getUserNewestReply(uid, last_pid = 0) {
         // 返回用户空间回复页首页新于last_pid的回复，通过能否在首页查询到不晚于last_pid的回复判断是否可能有更多回复
 
-        const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space', 'mobile': 2 };
+        const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', type: 'reply', from: 'space', mobile: 2 };
         const followed_threads = GM_getValue(uid + '_followed_threads', []);
         const follow_tids = followed_threads.map(e => e.tid).filter(e => e > 0);
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
@@ -1218,18 +1213,18 @@ label:has(.helper-toggle-switch)
                     pids.push(pid);
                 }
                 if (pids.length > 0 && !follow_tids.includes(Number(tid))) {
-                    new_replyed_threads.push({ 'tid': tid, 'title': title, 'pids': pids });
+                    new_replyed_threads.push({ tid, title, pids });
                 }
             }
         }
         last_pid = new_replyed_threads.length == 0 ? 1 : new_replyed_threads[0].pids[0]; // last_pid==0代表第一次查询新回复状态，所以完全没有回复的状态只能设为1
-        return { 'new': new_replyed_threads, 'found': found, 'last_tpid': last_pid };
+        return { 'new': new_replyed_threads, found, last_tpid: last_pid };
     }
 
     async function getUserNewestThread(uid, last_tid = 0) {
         // 返回用户空间主题页首页新于last_tid的主题，通过能否在首页查询到不晚于last_tid的主题判断是否可能有更多主题
 
-        const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid, 'do': 'thread', 'view': 'me', 'from': 'space', 'mobile': 2 };
+        const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space', mobile: 2 };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const threads_in_page = qSA('li.list', page_doc);
         let new_threads = [];
@@ -1243,20 +1238,20 @@ label:has(.helper-toggle-switch)
                 }
                 const title = qS('a:nth-child(2) > div > em', thread).textContent;
                 const fid = qS('li.mr > a', thread).href.parseURL().fid;
-                new_threads.push({ 'tid': tid, 'title': title, 'fid': fid });
+                new_threads.push({ tid, title, fid });
                 if (last_tid == 0) {
                     break;
                 }
             }
         }
         last_tid = new_threads.length == 0 ? 1 : new_threads[0].tid;
-        return { 'new': new_threads, 'found': found, 'last_tpid': last_tid }
+        return { 'new': new_threads, found, 'last_tpid': last_tid }
     }
 
     async function getUserNewestPostInThread(uid, tid, last_pid = 0) {
         // 返回关注主题只看该作者末页（large_page_num）新于last_pid的回复，通过能否在末页查询到不晚于last_pid的回复判断是否可能有更多回复
 
-        const URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': tid, 'authorid': uid, 'page': large_page_num, 'mobile': 2 };
+        const URL_params = { loc: 'forum', mod: 'viewthread', tid, authorid: uid, page: large_page_num, mobile: 2 };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const posts_in_page = getPostsInPage(page_doc);
         const thread_title = qS('head > title', page_doc).textContent.slice(0, -8);
@@ -1276,10 +1271,10 @@ label:has(.helper-toggle-switch)
             }
         }
         if (pids.length > 0) {
-            new_posts.push({ 'tid': tid, 'title': thread_title, 'pids': pids });
+            new_posts.push({ tid, title: thread_title, pids });
         }
         last_pid = new_posts.length == 0 ? 1 : new_posts[0].pids[0]; // last_pid==0代表第一次查询新回复状态，所以完全没有回复的状态只能设为1
-        return { 'new': new_posts, 'found': found, 'last_tpid': last_pid };
+        return { new: new_posts, found, last_tpid: last_pid };
     }
 
     // ========================================================================================================
@@ -1287,10 +1282,10 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     function setHidden(elem, hidden = true) {
         if (hidden) {
-            elem.setAttribute('data-hidden', '');
+            elem.style.display = 'none';
         }
         else {
-            elem.removeAttribute('data-hidden');
+            elem.style.display = '';
         }
     }
 
@@ -1340,7 +1335,7 @@ label:has(.helper-toggle-switch)
     }
 
     function createFollowButton(info) {
-        // info: { 'uid': uid, 'name': name, 'tid': tid, 'title': title }
+        // info: { uid, name, tid, title }
         let follow_text;
         let followed_text;
         let unfollow_text;
@@ -1386,7 +1381,7 @@ label:has(.helper-toggle-switch)
             follow_btn.textContent = !followed ? followed_text : follow_text;
             recordFollow(info, !followed);
             if (info.tid == -1 && !followed) { // 特关同时也关注主题
-                recordFollow({ 'uid': info.uid, 'name': info.name, 'tid': 0, 'title': '所有主题' }, true);
+                recordFollow({ uid: info.uid, name: info.name, tid: 0, title: '所有主题' }, true);
             }
         });
 
@@ -1574,13 +1569,13 @@ label:has(.helper-toggle-switch)
             all_checked = all_checked && checkbox.checked;
 
             const user_card = qS('tbody > tr:nth-child(1) > td.pls > div', post)
-            const post_follow_btn = createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': tid, 'title': thread_title });
+            const post_follow_btn = createFollowButton({ uid, name: post_info.post_auth, tid, title: thread_title });
             post_follow_btn.classList.add('o');
             user_card.appendChild(post_follow_btn);
             user_card.appendChild(label);
 
             const profile_icon = qS('[id^=userinfo] > div.i.y > div.imicn', post)
-            profile_icon.appendChild(createFollowButton({ 'uid': uid, 'name': post_info.post_auth, 'tid': 0 }));
+            profile_icon.appendChild(createFollowButton({ uid, name: post_info.post_auth, tid: 0 }));
         }
 
         const label = docre('label');
@@ -1683,12 +1678,12 @@ label:has(.helper-toggle-switch)
             }
             if (URL_info.view == 'me' && URL_info.from == 'space') {
                 const user_name = getSpaceAuthor();
-                const header = document.querySelector("#ct > div.mn > div > div.bm_h > h1");
-                const masterpiece = docre("span");
-                masterpiece.className = "xs1 xw0";
-                const pipe = docre("span");
-                pipe.className = "pipe";
-                pipe.textContent = "|";
+                const header = document.querySelector('#ct > div.mn > div > div.bm_h > h1');
+                const masterpiece = docre('span');
+                masterpiece.className = 'xs1 xw0';
+                const pipe = docre('span');
+                pipe.className = 'pipe';
+                pipe.textContent = '|';
                 masterpiece.appendChild(pipe);
                 insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, user_name), masterpiece);
                 header.appendChild(masterpiece);
@@ -1698,9 +1693,9 @@ label:has(.helper-toggle-switch)
         const toptb = qS('#toptb > div.z');
         if (toptb) {
             const name = getSpaceAuthor();
-            const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': URL_info.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
+            const URL_params = { loc: 'home', mod: 'space', uid: URL_info.uid, do: 'thread', view: 'me', from: 'space' };
             insertLink(`${name}的主题`, URL_params, toptb);
-            toptb.appendChild(createFollowButton({ 'uid': URL_info.uid, 'name': name, 'tid': URL_info.type == 'reply' ? -1 : 0 }));
+            toptb.appendChild(createFollowButton({ uid: URL_info.uid, name, tid: URL_info.type == 'reply' ? -1 : 0 }));
         }
 
         if (URL_info.mod == 'space' && URL_info.uid == GM_info.script.author && URL_info.do == 'wall' && URL_info.loc == 'home') {
@@ -1715,7 +1710,6 @@ label:has(.helper-toggle-switch)
             label.appendChild(text);
             pos.appendChild(label);
         }
-
     }
 
     function updateForumPage() {
@@ -2027,6 +2021,10 @@ label:has(.helper-toggle-switch)
         return tag_container;
     }
 
+    function createHelperFakeSelect(options) {
+
+    }
+
     // ========================================================================================================
     // 助手设置弹窗相关
     // ========================================================================================================
@@ -2059,16 +2057,16 @@ label:has(.helper-toggle-switch)
 
         for (let user of followed_users) {
             const followed_threads = GM_getValue(user.uid + '_followed_threads', []);
-            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid };
+            const user_URL_params = { loc: 'home', mod: 'space', uid: user.uid };
 
             if (followed_threads.some(e => e.tid == -1)) {
                 const row = table_body.insertRow();
                 const [user_cell, thread_cell, follow_cell] = [0, 1, 2].map(i => row.insertCell(i));
 
                 insertLink(user.name, user_URL_params, user_cell);
-                const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
+                const thread_URL_params = { loc: 'home', mod: 'space', uid: user.uid, do: 'thread', view: 'me', type: 'reply', from: 'space' };
                 insertLink('所有回复', thread_URL_params, thread_cell);
-                follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': -1, 'title': '所有回复' }));
+                follow_cell.appendChild(createFollowButton({ 'uid': user.uid, name: user.name, tid: -1, title: '所有回复' }));
                 continue;
             }
 
@@ -2079,14 +2077,14 @@ label:has(.helper-toggle-switch)
                 insertLink(user.name, user_URL_params, user_cell);
                 let thread_URL_params;
                 if (thread.tid > 0) {
-                    thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid };
+                    thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: thread.tid };
                 }
                 else if (thread.tid == 0) {
-                    thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
+                    thread_URL_params = { loc: 'home', mod: 'space', uid: user.uid, do: 'thread', view: 'me', from: 'space' };
                 }
 
                 insertLink(thread.title, thread_URL_params, thread_cell);
-                follow_cell.appendChild(createFollowButton({ 'uid': user.uid, 'name': user.name, 'tid': thread.tid, 'title': thread.title }));
+                follow_cell.appendChild(createFollowButton({ uid: user.uid, name: user.name, tid: thread.tid, title: thread.title }));
             }
         }
         return table;
@@ -2158,14 +2156,14 @@ label:has(.helper-toggle-switch)
 
                 components = [
                     // 开启更新通知
-                    { 'title': '订阅更新通知', 'type': 'switch', 'args': ['enable_notification'] },
+                    { title: '订阅更新通知', type: 'switch', args: ['enable_notification', () => setHidden(qS('#htb-follow'), !hs.enable_notification)] },
                     // 开启历史消息
-                    { 'title': '保存历史通知', 'type': 'switch', 'args': ['enable_history', () => setHidden(qS('#htb-history'), !hs.enable_history)] },
+                    { title: '保存历史通知', type: 'switch', args: ['enable_history', () => setHidden(qS('#htb-history'), !hs.enable_history)] },
                     // 开启辅助换行
-                    { 'title': '自动换行', 'type': 'switch', 'args': ['enable_auto_wrap', updatePageDoc] },
+                    { title: '自动换行', type: 'switch', args: ['enable_auto_wrap', updatePageDoc] },
                     // 开启屏蔽词
                     {
-                        'title': '关键词屏蔽', 'type': 'switch', 'args': ['enable_block_keyword', () => {
+                        title: '关键词屏蔽', type: 'switch', args: ['enable_block_keyword', () => {
                             updatePageDoc();
                             setHidden(qS('#htb-block'), !hs.enable_block_keyword);
                         }
@@ -2173,7 +2171,7 @@ label:has(.helper-toggle-switch)
                     },
                     // 开启黑名单
                     {
-                        'title': '黑名单', 'type': 'switch', 'args': ['enable_blacklist', () => {
+                        title: '黑名单', type: 'switch', args: ['enable_blacklist', () => {
                             updatePageDoc();
                             setHidden(qS('#htb-blacklist'), !hs.enable_blacklist);
                         }]
@@ -2185,14 +2183,14 @@ label:has(.helper-toggle-switch)
                 components = [
                     // 选择下载内容
                     {
-                        'title': '主题保存内容', 'type': 'multicheck', 'args': [[
-                            { 'attr': 'enable_text_download', 'text': '文本' },
-                            { 'attr': 'enable_attach_download', 'text': '附件' },
-                            { 'attr': 'enable_op_download', 'text': '原创资源' }]]
+                        title: '主题保存内容', type: 'multicheck', args: [[
+                            { attr: 'enable_text_download', text: '文本' },
+                            { attr: 'enable_attach_download', text: '附件' },
+                            { attr: 'enable_op_download', text: '原创资源' }]]
                     },
                     // 选择文件打包模式
                     {
-                        'title': '归档保存方式', 'type': 'select', 'args': [
+                        title: '归档保存方式', type: 'select', args: [
                             'files_pack_mode',
                             ['no', 'single', 'all'],
                             ['不归档', '分类归档', '全部归档']]
@@ -2200,7 +2198,7 @@ label:has(.helper-toggle-switch)
                     // 选择默认合并下载模式
                     // 开启自动回复
                     {
-                        'title': '自动回复', 'type': 'switch', 'args': ['enable_auto_reply']
+                        title: '自动回复', type: 'switch', args: ['enable_auto_reply']
                     }
                 ];
 
@@ -2210,19 +2208,19 @@ label:has(.helper-toggle-switch)
                 components = [
                     // 清除历史消息
                     {
-                        'title': '清空历史通知', 'type': 'button', 'args': ['全部清空', () => {
+                        title: '清空历史通知', type: 'button', args: ['全部清空', () => {
                             const confirm = window.confirm('确定清空所有历史通知？');
                             if (confirm) {
                                 GM.deleteValue('notification_messages');
                                 location.reload();
                             }
                         }]
-                        , 'hidden': !hs.enable_history
+                        , hidden: !hs.enable_history
                     },
 
                     // 清除脚本数据
                     {
-                        'title': '清空脚本数据', 'type': 'button', 'args': ['全部清空', () => {
+                        title: '清空脚本数据', type: 'button', args: ['全部清空', () => {
                             const confirm = window.confirm('确定清空脚本所有数据？');
                             if (confirm) {
                                 GM_listValues().forEach(e => GM.deleteValue(e));
@@ -2273,14 +2271,14 @@ label:has(.helper-toggle-switch)
         content_container.appendChild(tab_content_container);
 
         const tabs = [
-            { 'id': 'view', 'name': '浏览设置', 'func': () => createHelperSettingTab('read') },
-            { 'id': 'save', 'name': '下载设置', 'func': () => createHelperSettingTab('save') },
-            { 'id': 'follow', 'name': '关注列表', 'func': createFollowListTab, 'hidden': !hs.enable_notification },
-            { 'id': 'history', 'name': '历史消息', 'func': createHistoryNotificationTab, 'hidden': !hs.enable_history },
-            { 'id': 'block', 'name': '关键词屏蔽', 'func': createBlockKeywordTab, 'hidden': !hs.enable_block_keyword },
-            { 'id': 'blacklist', 'name': '黑名单', 'func': createBlacklistTab, 'hidden': !hs.enable_blacklist },
-            { 'id': 'data', 'name': '数据设置', 'func': () => createHelperSettingTab('data') },
-            { 'id': 'debug', 'name': '调试', 'func': createDebugTab }];
+            { id: 'view', name: '浏览设置', func: () => createHelperSettingTab('read') },
+            { id: 'save', name: '下载设置', func: () => createHelperSettingTab('save') },
+            { id: 'data', name: '数据设置', func: () => createHelperSettingTab('data') },
+            { id: 'follow', name: '关注列表', func: createFollowListTab, 'hidden': !hs.enable_notification },
+            { id: 'history', name: '历史提醒', func: createHistoryNotificationTab, 'hidden': !hs.enable_history },
+            { id: 'block', name: '标题屏蔽词', func: createBlockKeywordTab, 'hidden': !hs.enable_block_keyword },
+            { id: 'blacklist', name: '黑名单', func: createBlacklistTab, 'hidden': !hs.enable_blacklist },
+            { id: 'debug', name: '调试', func: createDebugTab }];
 
         const show_tab = content => {
             tab_content_container.innerHTML = '';
@@ -2347,7 +2345,7 @@ label:has(.helper-toggle-switch)
                         const last_tpid = new_infos.last_tpid;
 
                         if (new_threads.length > 0) {
-                            updateGMListElements(followed_threads, { 'tid': thread.tid, 'last_tpid': last_tpid, 'title': thread.title }, true, (a, b) => a.tid == b.tid);
+                            updateGMListElements(followed_threads, { tid: thread.tid, last_tpid, title: thread.title }, true, (a, b) => a.tid == b.tid);
                             updateGMList(user.uid + '_followed_threads', followed_threads);
                         }
 
@@ -2364,7 +2362,7 @@ label:has(.helper-toggle-switch)
                             const messageElement = docre('div');
                             messageElement.className = 'helper-noti-message';
                             parent.appendChild(messageElement);
-                            const user_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid };
+                            const user_URL_params = { loc: 'home', mod: 'space', uid };
                             const user_link = insertLink(user.name, user_URL_params, messageElement);
                             user_link.className = 'helper-ellip-link';
                             user_link.style.maxWidth = '30%';
@@ -2384,7 +2382,7 @@ label:has(.helper-toggle-switch)
                                 message += `${new_thread.pids.length}条新回复在 `;
                                 const text_element = document.createTextNode(message);
                                 messageElement.appendChild(text_element);
-                                const thread_URL_params = { 'loc': 'forum', 'mod': 'redirect', 'goto': 'findpost', 'ptid': new_thread.tid, 'pid': new_thread.pids.at(-1) };
+                                const thread_URL_params = { loc: 'forum', mod: 'redirect', goto: 'findpost', ptid: new_thread.tid, pid: new_thread.pids.at(-1) };
                                 const thread_message = insertLink(thread_title, thread_URL_params, messageElement);
                                 thread_message.className = 'helper-ellip-link';
                             }
@@ -2392,7 +2390,7 @@ label:has(.helper-toggle-switch)
                                 const messageElement = createParaAndInsertUserNameLink(user.uid, div);
                                 const text_element2 = document.createTextNode(' 或有 ');
                                 messageElement.appendChild(text_element2);
-                                const reply_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'type': 'reply', 'from': 'space' };
+                                const reply_URL_params = { loc: 'home', mod: 'space', 'uid': user.uid, do: 'thread', view: 'me', type: 'reply', from: 'space' };
                                 insertLink('更多新回复', reply_URL_params, messageElement);
                             }
                         }
@@ -2405,7 +2403,7 @@ label:has(.helper-toggle-switch)
                                 const messageElement = createParaAndInsertUserNameLink(user.uid, div);
                                 const text_element = document.createTextNode(' 有新帖 ');
                                 messageElement.appendChild(text_element);
-                                const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': new_thread.tid };
+                                const thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: new_thread.tid };
                                 const thread_message = insertLink(new_thread.title, thread_URL_params, messageElement);
                                 thread_message.className = 'helper-ellip-link';
                                 if (hs.important_fids.includes(new_thread.fid)) {
@@ -2420,7 +2418,7 @@ label:has(.helper-toggle-switch)
                                 }
                                 const text_element = document.createTextNode(message);
                                 messageElement.appendChild(text_element);
-                                const thread_URL_params = { 'loc': 'home', 'mod': 'space', 'uid': user.uid, 'do': 'thread', 'view': 'me', 'from': 'space' };
+                                const thread_URL_params = { loc: 'home', mod: 'space', 'uid': user.uid, do: 'thread', view: 'me', from: 'space' };
                                 insertLink(`${new_threads.length - 3}条新帖`, thread_URL_params, messageElement);
                             }
                         }
@@ -2487,7 +2485,7 @@ label:has(.helper-toggle-switch)
             const row = table_body.insertRow();
             const [thread_cell, view_cell, reply_cell] = [0, 1, 2].map(i => row.insertCell(i));
 
-            const thread_URL_params = { 'loc': 'forum', 'mod': 'viewthread', 'tid': thread.tid };
+            const thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: thread.tid };
             insertLink(thread.title, thread_URL_params, thread_cell);
             view_cell.textContent = thread.views;
             reply_cell.textContent = thread.replies;
@@ -2501,7 +2499,7 @@ label:has(.helper-toggle-switch)
         document.body.appendChild(popup);
         const content_container = qS('#helper-content-container', popup);
 
-        let masterpiece_info = GM_getValue(uid + '_masterpiece', { 'update_time': 0, 'max_view_threads': [], 'max_reply_threads': [] });
+        let masterpiece_info = GM_getValue(uid + '_masterpiece', { update_time: 0, max_view_threads: [], max_reply_threads: [] });
         if (Date.now() - masterpiece_info.update_time > hs.data_cache_time) {
             content_container.appendChild(createLoadingOverlay());
             masterpiece_info = await updateMasterpiece(uid);
@@ -2529,7 +2527,7 @@ label:has(.helper-toggle-switch)
 
     async function updateMasterpiece(uid) {
         const getUserThreadNum = async (uid) => {
-            const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid, 'do': 'profile' };
+            const URL_params = { loc: 'home', mod: 'space', uid: uid, do: 'profile' };
             const page_doc = await getPageDocInDomain(URL_params);
             const thread_info = qS('#ct > div.mn > div > div.bm_c > div > div:nth-child(1) > ul.cl.bbda.pbm.mbm > li > a:nth-child(12)', page_doc);
             const thread_num = Number(thread_info.textContent.slice(4));
@@ -2539,7 +2537,7 @@ label:has(.helper-toggle-switch)
         const max_page = Math.ceil(await getUserThreadNum(uid) / 20);
         let threads = [];
         let promises = Array.from({ length: max_page }, (v, k) => k + 1).map(page_num => new Promise(async (resolve, reject) => {
-            const URL_params = { 'loc': 'home', 'mod': 'space', 'uid': uid, 'do': 'thread', 'view': 'me', 'page': page_num, 'mobile': 2 };
+            const URL_params = { loc: 'home', mod: 'space', 'uid': uid, do: 'thread', view: 'me', page: page_num, mobile: 2 };
             const page_doc = await getPageDocInDomain(URL_params, mobileUA);
             const threads_in_page = qSA('li.list', page_doc);
             for (let thread of threads_in_page) {
@@ -2548,7 +2546,7 @@ label:has(.helper-toggle-switch)
                 const tid = thread_title_node.parentNode.href.parseURL().tid;
                 const views = Number(qS('.dm-eye-fill', thread).nextSibling.textContent);
                 const replies = Number(qS('.dm-chat-s-fill', thread).nextSibling.textContent);
-                threads.push({ 'tid': tid, 'title': thread_title, 'views': views, 'replies': replies });
+                threads.push({ tid, title: thread_title, views, replies });
             }
             resolve();
         }));
@@ -2556,7 +2554,7 @@ label:has(.helper-toggle-switch)
 
         const max_view_threads = threads.sort((a, b) => b.views - a.views).slice(0, hs.masterpiece_num);
         const max_reply_threads = threads.sort((a, b) => b.replies - a.replies).slice(0, hs.masterpiece_num);
-        const masterpiece_info = { 'update_time': Date.now(), 'max_view_threads': max_view_threads, 'max_reply_threads': max_reply_threads };
+        const masterpiece_info = { update_time: Date.now(), max_view_threads, max_reply_threads };
         GM.setValue(uid + '_masterpiece', masterpiece_info);
         return masterpiece_info;
     }
@@ -2644,6 +2642,7 @@ label:has(.helper-toggle-switch)
 // FIXME 更新通知、代表作中标题的精华标记
 // TODO 测试自动回复
 // FIXME merged save 没有帖子分割线
+// FIXME :has
 
 // 功能更新：优先
 // TODO 合并保存选项
@@ -2652,25 +2651,26 @@ label:has(.helper-toggle-switch)
 // TODO 用户改名提醒
 
 // 功能优化
-// TODO 保证弹窗弹出
-// TODO debug log
 // TODO 关注按钮联动
 // TODO 按钮hover
 // TODO 代表作按回复排序
 // TODO 无代表作时居中
 // TODO 代表作标题链接、省略
+// TODO 代表作进度条
 // TODO 版面浮动名片、好友浮动名片添加代表作
 // TODO 版面浮动名片、好友浮动名片添加关注
 // TODO 黑名单等级
 // TODO 黑名单按钮
+// TODO 自动切换全贴/选中？
 
 // 设置优化
-// TODO 设置分组
 // TODO 换行参数
 // TODO 提醒参数
 // TODO 代表作数量
 // TODO 历史消息上限
 // TODO 无选中时会下载空文件
+// TODO 插入设置
+// TODO 恢复默认
 
 // 调试模式
 // TODO 导出关注
@@ -2684,6 +2684,8 @@ label:has(.helper-toggle-switch)
 // innertext
 // getSpaceAuthor
 // getPostsInPage
+// 保证弹窗弹出
+// debug log
 
 // 搁置: 不会
 // TODO 上传表情
