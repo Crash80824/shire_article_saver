@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.2.2
+// @version      0.10.2.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -527,8 +527,7 @@ label:has(> .helper-toggle-switch)
   transition: background-color 0.3s;
 }
 
-.helper-follow-button,
-.helper-followed-button {
+.helper-f-button {
   padding: 2px;
   width: 5.5rem;
   cursor: pointer;
@@ -538,55 +537,55 @@ label:has(> .helper-toggle-switch)
   transition: background-color 0.3s ease;
 }
 
-.helper-follow-button {
+.helper-f-button:not([data-hfb-followed]) {
   background-color: #1772f6;
 }
 
-.helper-follow-button:hover {
+.helper-f-button:not([data-hfb-followed]):hover {
   background-color: #0063e6;
 }
 
-.helper-follow-button.hfb-normal::before {
+.helper-f-button.hfb-normal:not([data-hfb-followed])::before {
   content: '关注';
 }
 
-.helper-follow-button.hfb-special::before {
+.helper-f-button.hfb-special:not([data-hfb-followed])::before {
   content: '特别关注';
 }
 
-.helper-follow-button.hfb-thread::before {
+.helper-f-button.hfb-thread:not([data-hfb-followed])::before {
   content: '在本贴关注';
 }
 
-.helper-followed-button {
+.helper-f-button[data-hfb-followed] {
   background-color: #8491a5;
 }
 
-.helper-followed-button:hover {
+.helper-f-button[data-hfb-followed]:hover {
   background-color: #758195;
 }
 
-.helper-followed-button.hfb-normal::before {
+.helper-f-button.hfb-normal[data-hfb-followed]::before {
   content: '已关注';
 }
 
-.helper-followed-button.hfb-normal:hover::before {
+.helper-f-button.hfb-normal[data-hfb-followed]:hover::before {
   content: '取消关注';
 }
 
-.helper-followed-button.hfb-special::before {
+.helper-f-button.hfb-special[data-hfb-followed]::before {
   content: '已特关';
 }
 
-.helper-followed-button.hfb-special:hover::before {
+.helper-f-button.hfb-special[data-hfb-followed]:hover::before {
   content: '取消特关';
 }
 
-.helper-followed-button.hfb-thread::before {
+.helper-f-button.hfb-thread[data-hfb-followed]::before {
   content: '已在本贴关注';
 }
 
-.helper-followed-button.hfb-thread:hover::before {
+.helper-f-button.hfb-thread[data-hfb-followed]:hover::before {
   content: '在本贴取关';
 }
 
@@ -1431,8 +1430,11 @@ th.helper-sortby::after {
         const follow_status = GM_getValue(info.uid + '_followed_threads', []);
         const followed = follow_status.some(e => e.tid == info.tid);
         follow_btn.type = 'button';
-        follow_btn.className = followed ? 'helper-followed-button' : 'helper-follow-button';
+        follow_btn.className = 'helper-f-button';
         follow_btn.setAttribute('data-hfb-uid', info.uid);
+        if (followed) {
+            follow_btn.setAttribute('data-hfb-followed');
+        }
 
         let follow_type = '';
         switch (info.tid) {
@@ -1458,8 +1460,12 @@ th.helper-sortby::after {
             const follow_status = GM_getValue(info.uid + '_followed_threads', []);
             const followed = follow_status.some(e => e.tid == info.tid);
             qSA(`.${follow_type}[data-hfb-uid='${info.uid}']`).forEach(e => {
-                e.classList.remove(followed ? 'helper-followed-button' : 'helper-follow-button');
-                e.classList.add(!followed ? 'helper-followed-button' : 'helper-follow-button');
+                if (followed) {
+                    e.removeAttribute('data-hfb-followed');
+                }
+                else {
+                    e.setAttribute('data-hfb-followed', '')
+                }
             });
             recordFollow(info, !followed);
             if (info.tid == -1 && !followed) { // 特关同时也关注主题
@@ -2763,6 +2769,7 @@ th.helper-sortby::after {
 // FIXME 自动回复内容
 
 // 功能更新：优先
+// TODO 黑名单按钮
 // TODO 合并保存选项
 // TODO 精华推荐
 
@@ -2770,7 +2777,6 @@ th.helper-sortby::after {
 // TODO 用户改名提醒
 
 // 功能优化：优先
-// TODO 黑名单按钮
 // TODO 代表作标题链接、省略
 // TODO 保存文本链接处理
 // TODO 保存选中时无选中
@@ -2804,7 +2810,7 @@ th.helper-sortby::after {
 // 保证弹窗弹出
 // debug log
 // TODO changePageAllCheckboxs
-// TODO css classname
+// TODO css classname data清理
 
 // 搁置: 不会
 // TODO 上传表情
