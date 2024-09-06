@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.0.4
+// @version      0.10.0.5
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -44,7 +44,7 @@
     // ========================================================================================================
     // 判断脚本启用条件
     // ========================================================================================================
-    const location_params = location.href.parseURL();
+    const location_params = document.URL.parseURL();
     const is_desktop = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
 
     if (!is_desktop) {
@@ -92,8 +92,8 @@
         files_pack_mode: 'no',
         default_merge_mode: 'main',
         // 自动回复设置
-        enable_auto_reply: true,
-        auto_reply_message: '收藏了，谢谢楼主分享！',
+        enable_auto_reply: false,
+        auto_reply_message: '',
         // 自动换行设置
         enable_auto_wrap: false,
         min_wrap_length: 100,
@@ -684,48 +684,78 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     // 获取页面信息
     // ========================================================================================================
-    const hasReadPermission = (doc = document) => !Boolean(qS('#messagetext', doc));
-    const isFirstPage = (doc = document) => { const page = doc.URL.parseURL().page; return !Boolean(page) || page == 1; }
-    const hasThreadInPage = (doc = document) => { const thread_list = qS('#delform > table > tbody > tr:not(.th)', doc); return Boolean(thread_list) && thread_list.childNodes.length > 3; }
+    function hasReadPermission(doc = document) {
+        return !Boolean(qS('#messagetext', doc));
+    }
 
-    const getPostId = post => post.id.slice(3);
-    const getPostsInPage = (page_doc = document) => qSA('[id^=pid]', page_doc);
-    const getSpaceAuthor = () => {
-        const space_do = location.href.parseURL().do;
-        if (typeof space_do === 'undefined') {
-            return qS('meta[name="keywords"]').content.slice(0, -3);
-        }
-        else {
-            const author_name = qS('#pcd > div > div > h2 > a');
-            return author_name ? author_name.textContent : '';
-        }
-    };
+    function isLogged(doc = document) {
+        return Boolean(qS('#myitem')) || Boolean(qS('#myspace'));
+    }
 
-    function getPostInfo(post, page_doc = document) {
+    function isFirstPage(URL_params) {
+        const page = URL_params.page;
+        return !Boolean(page) || page == 1;
+    }
+
+    function getPostId(post) { return post.id.slice(3); }
+
+    function getPostsInPage(page_doc = document) { return qSA('[id^=pid]', page_doc); }
+
+    function getPostInfo(post) {
         const post_id = getPostId(post);
-        const thread_id = qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a', page_doc).href.parseURL().tid;
+        const post_URL = qS(`#postnum${post_id}`, post).href;
+        const post_URL_params = post_URL.parseURL();
+        const thread_id = post_URL_params.ptid;
         const post_auth = qS('#favatar' + post_id + ' > div.pi > div > a', post).text;
         const post_auth_id = qS('#favatar' + post_id + ' > div.pi > div > a', post).href.parseURL().uid;
         const sub_time = qS('[id^=authorposton]', post).textContent;
-        const post_URL = `${page_doc.baseURI}forum.php?mod=redirect&goto=findpost&ptid=${thread_id}&pid=${post_id}`;
 
-        return { post_id, post_auth, post_auth_id, sub_time, post_URL };
+        return { post_id, thread_id, post_auth, post_auth_id, sub_time, post_URL };
     }
 
-    function getThreadAuthorInfo() {
-        let thread_auth_name = '';
-        let thread_auth_id = '';
-        if (isFirstPage()) {
-            const first_post_info = getPostInfo(qS('#postlist > div > table'));
-            thread_auth_name = first_post_info.post_auth;
-            thread_auth_id = first_post_info.post_auth_id;
+    function getFirstFloorAuthorInfo(page_doc = document) {
+        const first_post_info = getPostInfo(qS('#postlist > div > table'), page_doc);
+        return { name: first_post_info.post_auth, uid: first_post_info.post_auth_id };
+    }
+
+    function theOnlyAuthorInfo(page_doc = document) {
+        const specific_authorid = page_doc.original_url.parseURL().authorid;
+        const first_floor_author = getFirstFloorAuthorInfo(page_doc);
+        return specific_authorid == first_floor_author.uid ? first_floor_author : null;
+    }
+
+    async function getThreadAuthorInfo(page_doc = document) {
+        const URL_params = page_doc.original_url.parseURL();
+
+        if (isFirstPage(URL_params)) {
+            const the_only_author = theOnlyAuthorInfo(page_doc);
+            if (!the_only_author) {
+                return getFirstFloorAuthorInfo();
+            }
+            else {
+                delete URL_params.authorid;
+                const real_first_page = await getPageDocInDomain(URL_params);
+                return getThreadAuthorInfo(real_first_page);
+            }
         }
         else {
-            thread_auth_name = qS('#tath > a:nth-child(1)').title;
-            thread_auth_id = qS('#tath > a:nth-child(1)').href.parseURL().uid;
+            const thread_auth_name = qS('#tath > a:nth-child(1)').title;
+            const thread_auth_id = qS('#tath > a:nth-child(1)').href.parseURL().uid;
+            return { name: thread_auth_name, uid: thread_auth_id };
         }
-        return { name: thread_auth_name, id: thread_auth_id };
     }
+
+    function getSpaceAuthor(page_doc = document) {
+        const URL_params = page_doc.original_url.parseURL();
+
+        if (typeof URL_params.do === 'undefined') {
+            return qS('meta[name="keywords"]', page_doc).content.slice(0, -3);
+        }
+        else {
+            const author_name = qS('#pcd > div > div > h2 > a', page_doc);
+            return author_name ? author_name.textContent : '';
+        }
+    };
 
     function createURLInDomain(params) {
         if (!'loc' in params) {
@@ -766,9 +796,9 @@ label:has(.helper-toggle-switch)
     // ========================================================================================================
     // 获取页面内容
     // ========================================================================================================
-    function getPostChildNodeText(child) {
+    function formatPostNodeText(node) {
         let text = '';
-        switch (child.tagName + '.' + child.className) {
+        switch (node.tagName + '.' + node.className) {
             case 'STYLE.':
             case 'SCRIPT.':
             case 'TABLE.op':
@@ -777,15 +807,15 @@ label:has(.helper-toggle-switch)
             case 'DIV.quote':
                 {
                     text += '<<<\n';
-                    let quote_href = qS('td > div > blockquote > font > a', child);
+                    let quote_href = qS('td > div > blockquote > font > a', node);
                     if (quote_href) {
                         let origin_quote = quote_href.innerText;
                         quote_href.innerText += ` PID:${quote_href.href.parseURL().pid}`;
-                        text += child.textContent + '\n';
+                        text += node.textContent + '\n';
                         quote_href.innerText = origin_quote;
                     }
                     else {
-                        text += child.textContent + '\n'
+                        text += node.textContent + '\n'
                     }
                     text += '>>>\n';
                 }
@@ -794,7 +824,7 @@ label:has(.helper-toggle-switch)
                 text += '++++++++\n';
                 break;
             default:
-                text += child.textContent;
+                text += node.textContent;
         }
         return text;
     }
@@ -806,7 +836,7 @@ label:has(.helper-toggle-switch)
         let children_nodes = tf.childNodes;
         let text = '';
         for (let child of children_nodes) {
-            text += getPostChildNodeText(child);
+            text += formatPostNodeText(child);
         }
 
         let image_list = qS('#imagelist_' + pid, post); // 多图
@@ -865,7 +895,7 @@ label:has(.helper-toggle-switch)
                     continue;
                 }
             }
-            const post_info = getPostInfo(post, page_doc);
+            const post_info = getPostInfo(post);
             const post_content = getPostContent(post_info.post_id, page_doc);
 
             attach.push(...post_content.attach);
@@ -1038,7 +1068,7 @@ label:has(.helper-toggle-switch)
     async function saveThread(type = 'main') {
         const thread_id = qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > span > a').href.parseURL().tid;
         let title_name = qS('#thread_subject').parentNode.textContent.replaceAll('\n', '').replaceAll('[', '【').replaceAll(']', '】');
-        let file_info = `Link: ${location.href}\n****************\n`;
+        let file_info = `Link: ${document.URL}\n****************\n`;
 
         if (type == 'main') {
             let text = file_info;
@@ -1051,13 +1081,12 @@ label:has(.helper-toggle-switch)
             let text = file_info;
             let attach = [];
             let op = [];
-            const page_author = getThreadAuthorInfo();
-            const specific_authorid = location.href.parseURL().authorid;
-            const is_only_author = specific_authorid == page_author.id;
+
+            const the_only_author = theOnlyAuthorInfo();
 
             let filename_suffix = '';
-            if (is_only_author) {
-                filename_suffix = `${page_author.name}`;
+            if (the_only_author) {
+                filename_suffix = `${the_only_author.name}`;
                 if (type == 'checked') {
                     filename_suffix += '节选';
                 }
@@ -1075,8 +1104,8 @@ label:has(.helper-toggle-switch)
             const page_num = (qS('#pgt > div > div > label > span') || { title: '共 1 页' }).title.match(/共 (\d+) 页/)[1];
             const promises = Array.from({ length: page_num }, (_, i) => i + 1).map(async page_id => {
                 const URL_params = { loc: 'forum', mod: 'viewthread', tid: thread_id, page: page_id };
-                if (is_only_author) {
-                    URL_params.authorid = specific_authorid;
+                if (the_only_author) {
+                    URL_params.authorid = the_only_author.uid;
                 }
                 const page_doc = await getPageDocInDomain(URL_params);
                 return getPageContent(page_doc, type);
@@ -1097,7 +1126,7 @@ label:has(.helper-toggle-switch)
         createTopProgressbar();
         let progress = { value: 0 };
 
-        const uid = location.href.parseURL().uid;
+        const uid = document.URL.parseURL().uid;
         let checked_threads = GM_getValue(uid + '_checked_threads', []);
         progress.value = 10;
         updateTopProgressbar(progress.value);
@@ -1257,7 +1286,7 @@ label:has(.helper-toggle-switch)
     }
 
     function changePageAllCheckboxs() {
-        const tid = location.href.parseURL().tid;
+        const tid = document.URL.parseURL().tid;
         const checkbox_page = qS('#page_checked_all');
         const checked_for_all = checkbox_page.checked;
         const checkbox_posts = qSA('input[id^="post_check_"]');
@@ -1566,7 +1595,7 @@ label:has(.helper-toggle-switch)
     }
 
     async function modifyPostInPage() {
-        const tid = location.href.parseURL().tid;
+        const tid = document.URL.parseURL().tid;
         const checked_posts = await GM.getValue(tid + '_checked_posts', []);
         const posts_in_page = getPostsInPage();
         const thread_title = qS('#thread_subject').textContent;
@@ -1618,9 +1647,14 @@ label:has(.helper-toggle-switch)
     }
 
     async function insertSpaceCheckbox() {
-        const uid = location.href.parseURL().uid;
+        const thread_table = qS('#delform > table > tbody');
+        if (qS('.emp', thread_table)) {
+            return;
+        }
+
+        const uid = document.URL.parseURL().uid;
         const checked_threads = await GM.getValue(uid + '_checked_threads', []);
-        const thread_in_page = qSA('tr:not(.th)', qS('#delform > table > tbody'));
+        const thread_in_page = qSA('tr:not(.th)', thread_table);
 
         for (let thread of thread_in_page) {
             const link = qS('th > a', thread)
@@ -1643,8 +1677,8 @@ label:has(.helper-toggle-switch)
     }
 
     async function modifyPostPage() {
-        const author = getThreadAuthorInfo();
-        const is_only_author = location.href.parseURL().authorid == author.id;
+        const location_params = document.URL.parseURL();
+        const the_only_author = theOnlyAuthorInfo();
 
         modifyPostInPage();
 
@@ -1656,37 +1690,35 @@ label:has(.helper-toggle-switch)
             });
         };
 
-        if (isFirstPage()) {
+        if (isFirstPage(location_params)) {
             insertInteractiveLink('保存主楼  ', saveFunc(), qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
+        }
 
-            if (is_only_author) {
-                insertInteractiveLink('保存作者  ', saveFunc('page'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
-            }
-            else {
-                insertInteractiveLink('保存全帖  ', saveFunc('page'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
-            }
+        if (the_only_author) {
+            insertInteractiveLink('保存作者  ', saveFunc('page'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+        }
+        else {
+            insertInteractiveLink('保存全帖  ', saveFunc('page'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
         }
 
         insertInteractiveLink('保存选中  ', saveFunc('checked'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
     }
 
     async function modifySpacePage() {
-        let URL_info = location.href.parseURL();
-        const uid = URL_info.uid;
-        if (!Boolean(URL_info.type)) {
-            URL_info.type = 'thread'
+        const URL_params = document.URL.parseURL();
+        const { uid, type, view, from, mod, loc } = URL_params;
+        if (!Boolean(type)) {
+            URL_params.type = 'thread'
         }
 
-        if (URL_info.do == 'thread') {
-            if (URL_info.type == 'thread') {
-                if (hasThreadInPage()) {
-                    insertSpaceCheckbox();
-                }
+        if (URL_params.do == 'thread') {
+            if (type == 'thread') {
+                insertSpaceCheckbox();
 
                 const pos = qS('#delform > table > tbody > tr.th > th');
                 insertInteractiveLink('  合并保存', () => { saveMergedThreads().then(() => removeTopProgressbar()) }, pos);
             }
-            if (URL_info.view == 'me' && URL_info.from == 'space') {
+            if (view == 'me' && from == 'space') {
                 const user_name = getSpaceAuthor();
                 const header = document.querySelector('#ct > div.mn > div > div.bm_h > h1');
                 const masterpiece = docre('span');
@@ -1703,12 +1735,12 @@ label:has(.helper-toggle-switch)
         const toptb = qS('#toptb > div.z');
         if (toptb) {
             const name = getSpaceAuthor();
-            const URL_params = { loc: 'home', mod: 'space', uid: URL_info.uid, do: 'thread', view: 'me', from: 'space' };
+            const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space' };
             insertLink(`${name}的主题`, URL_params, toptb);
-            toptb.appendChild(createFollowButton({ uid: URL_info.uid, name, tid: URL_info.type == 'reply' ? -1 : 0 }));
+            toptb.appendChild(createFollowButton({ uid, name, tid: type == 'reply' ? -1 : 0 }));
         }
 
-        if (URL_info.mod == 'space' && URL_info.uid == GM_info.script.author && URL_info.do == 'wall' && URL_info.loc == 'home') {
+        if (mod == 'space' && uid == GM_info.script.author && URL_params.do == 'wall' && loc == 'home') {
             const pos = qS('#pcd > div > ul');
             const label = docre('label');
             const checkbox = docre('input');
@@ -1723,7 +1755,7 @@ label:has(.helper-toggle-switch)
     }
 
     function modifyPageDoc(init = true) {
-        if (hasReadPermission()) {
+        if (hasReadPermission() && isLogged()) {
             if (location_params.loc == 'forum') {
                 if (location_params.mod == 'viewthread') {
                     if (init) {
@@ -1763,7 +1795,7 @@ label:has(.helper-toggle-switch)
     async function updatePostPages() {
         const posts_in_page = getPostsInPage();
         const follow_list = GM_getValue('followed_list', []);
-        const tid = location.href.parseURL().tid;
+        const tid = document.URL.parseURL().tid;
         for (let post of posts_in_page) {
             if (hs.enable_auto_wrap) {
                 const post_content = qS('[id^=postmessage]', post);
@@ -2625,7 +2657,7 @@ label:has(.helper-toggle-switch)
     }
 
     // ========================================================================================================
-    // 窗口事件
+    // 窗口事件和DOM属性
     // ========================================================================================================
     window.addEventListener('keydown', e => {
         if (e.key == 'Escape') {
@@ -2638,6 +2670,8 @@ label:has(.helper-toggle-switch)
             }
         }
     });
+
+    document.original_url = document.URL;
 
     // ========================================================================================================
     // 主体运行
@@ -2674,6 +2708,9 @@ label:has(.helper-toggle-switch)
 // TODO 测试自动回复
 // FIXME merged save 没有帖子分割线
 // FIXME :has
+// FIXME getSpaceAuthor
+// FIXME 使用username的空间
+// FIXME 自动回复内容
 
 // 功能更新：优先
 // TODO 合并保存选项
@@ -2682,19 +2719,23 @@ label:has(.helper-toggle-switch)
 // 功能更新：末优先
 // TODO 用户改名提醒
 
-// 功能优化
+// 功能优化：优先
 // TODO 关注按钮联动
-// TODO 设置按钮hover
+// TODO 黑名单按钮
+// TODO 帖子浮动名片、版面浮动名片、好友浮动名片添加代表作
 // TODO 代表作按回复排序
-// TODO 无代表作时居中
 // TODO 代表作标题链接、省略
 // TODO 代表作进度条
-// TODO 代表作时间显示
-// TODO 帖子浮动名片、版面浮动名片、好友浮动名片添加代表作
+
+// 功能优化
+// TODO 文本链接处理
 // TODO 版面浮动名片、好友浮动名片添加关注
 // TODO 黑名单等级
-// TODO 黑名单按钮
 // TODO 自动切换全贴/选中？
+// TODO 滚动条悬停显示
+// TODO 设置按钮hover
+// TODO 无代表作时居中
+// TODO 保存选中时无选中
 
 // 设置优化
 // TODO 换行参数
@@ -2711,12 +2752,8 @@ label:has(.helper-toggle-switch)
 
 // 代码优化
 // insertHelperLink
-// checked_posts
 // firefox
 // hover text
-// innertext
-// getSpaceAuthor
-// getPostsInPage
 // 保证弹窗弹出
 // debug log
 // TODO changePageAllCheckboxs
@@ -2730,6 +2767,7 @@ label:has(.helper-toggle-switch)
 // TODO md格式
 // TODO 历史消息重复
 // TODO NSFW（跳过题图）
+// TODO 手动输入超标page, isFirstPage会判断出错（等其它非标URL的情况）
 
 // 搁置：负载
 // TODO 上一集、下一集
