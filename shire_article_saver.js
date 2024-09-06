@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.2.1
+// @version      0.10.2.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1637,15 +1637,18 @@ th.helper-sortby::after {
             const label_text = document.createTextNode('保存本层');
             label.className = 'helper-checkbox-label o';
             label.appendChild(label_text);
-            user_card.appendChild(label);
+
 
             all_checked = all_checked && checkbox.checked;
+
+            const user_card = qS('tbody > tr:nth-child(1) > td.pls > div', post)
+            user_card.appendChild(label);
 
             const profile_card = qS('[id^=userinfo] > div.i.y ', post);
             insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, name), qS('div:first-child', profile_card));
 
             if (hs.enable_notification) {
-                const user_card = qS('tbody > tr:nth-child(1) > td.pls > div', post)
+
                 const post_follow_btn = createFollowButton({ uid, name, tid, title: thread_title });
                 post_follow_btn.classList.add('o');
                 user_card.appendChild(post_follow_btn);
@@ -2784,6 +2787,7 @@ th.helper-sortby::after {
 // 设置优化
 // TODO 换行参数
 // TODO 提醒参数
+// TODO 显示按钮和订阅更新分开设置
 // TODO 代表作数量
 // TODO 历史消息上限
 // TODO 无选中时会下载空文件
