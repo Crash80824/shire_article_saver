@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.1.2
+// @version      0.10.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -546,7 +546,7 @@ label:has(> .helper-toggle-switch)
   background-color: #0063e6;
 }
 
-.helper-follow-button::before {
+.helper-follow-button.hfb-normal::before {
   content: '关注';
 }
 
@@ -566,11 +566,11 @@ label:has(> .helper-toggle-switch)
   background-color: #758195;
 }
 
-.helper-followed-button::before {
+.helper-followed-button.hfb-normal::before {
   content: '已关注';
 }
 
-.helper-followed-button:hover::before {
+.helper-followed-button.hfb-normal:hover::before {
   content: '取消关注';
 }
 
@@ -845,20 +845,18 @@ th.helper-sortby::after {
             case 'IGNORE_JS_OP.':
                 break;
             case 'DIV.quote':
-                {
-                    text += '<<<\n';
-                    let quote_href = qS('td > div > blockquote > font > a', node);
-                    if (quote_href) {
-                        let origin_quote = quote_href.innerText;
-                        quote_href.innerText += ` PID:${quote_href.href.parseURL().pid}`;
-                        text += node.textContent + '\n';
-                        quote_href.innerText = origin_quote;
-                    }
-                    else {
-                        text += node.textContent + '\n'
-                    }
-                    text += '>>>\n';
+                text += '<<<\n';
+                let quote_href = qS('td > div > blockquote > font > a', node);
+                if (quote_href) {
+                    let origin_quote = quote_href.innerText;
+                    quote_href.innerText += ` PID:${quote_href.href.parseURL().pid}`;
+                    text += node.textContent + '\n';
+                    quote_href.innerText = origin_quote;
                 }
+                else {
+                    text += node.textContent + '\n'
+                }
+                text += '>>>\n';
                 break;
             case 'HR.l':
                 text += '++++++++\n';
@@ -1434,21 +1432,22 @@ th.helper-sortby::after {
         const followed = follow_status.some(e => e.tid == info.tid);
         follow_btn.type = 'button';
         follow_btn.className = followed ? 'helper-followed-button' : 'helper-follow-button';
+        follow_btn.setAttribute('data-hfb-uid', info.uid);
 
+        let follow_type = '';
         switch (info.tid) {
-            case -1: {
-                follow_btn.classList.add('hfb-special');
+            case -1:
+                follow_type = 'hfb-special';
                 info.title = '所有回复';
                 break;
-            }
-            case 0: {
+            case 0:
+                follow_type = 'hfb-normal';
                 info.title = '所有主题';
                 break;
-            }
-            default: {
-                follow_btn.classList.add('hfb-thread');
-            }
+            default:
+                follow_type = 'hfb-thread';
         }
+        follow_btn.classList.add(follow_type);
 
         follow_btn.addEventListener('click', async () => {
             const followed_num = GM_getValue('followed_num', 0);
@@ -1458,8 +1457,10 @@ th.helper-sortby::after {
             }
             const follow_status = GM_getValue(info.uid + '_followed_threads', []);
             const followed = follow_status.some(e => e.tid == info.tid);
-            follow_btn.classList.remove(followed ? 'helper-followed-button' : 'helper-follow-button');
-            follow_btn.classList.add(!followed ? 'helper-followed-button' : 'helper-follow-button');
+            qSA(`.${follow_type}[data-hfb-uid='${info.uid}']`).forEach(e => {
+                e.classList.remove(followed ? 'helper-followed-button' : 'helper-follow-button');
+                e.classList.add(!followed ? 'helper-followed-button' : 'helper-follow-button');
+            });
             recordFollow(info, !followed);
             if (info.tid == -1 && !followed) { // 特关同时也关注主题
                 recordFollow({ uid: info.uid, name: info.name, tid: 0, title: '所有主题' }, true);
@@ -2217,8 +2218,7 @@ th.helper-sortby::after {
         let components = [];
 
         switch (setting_type) {
-            case 'read': {
-
+            case 'read':
                 components = [
                     // 开启更新通知
                     { title: '订阅更新通知', type: 'switch', args: ['enable_notification', () => setHidden(qS('#htb-follow'), !hs.enable_notification)] },
@@ -2242,9 +2242,7 @@ th.helper-sortby::after {
                         }]
                     }];
                 break;
-            }
-            case 'save': {
-
+            case 'save':
                 components = [
                     // 选择下载内容
                     {
@@ -2266,10 +2264,8 @@ th.helper-sortby::after {
                         title: '自动回复', type: 'switch', args: ['enable_auto_reply']
                     }
                 ];
-
                 break;
-            }
-            case 'data': {
+            case 'data':
                 components = [
                     // 清除历史消息
                     {
@@ -2294,7 +2290,6 @@ th.helper-sortby::after {
                         }]
                     }];
                 break;
-            }
         }
 
         components.forEach(component => {
@@ -2767,20 +2762,19 @@ th.helper-sortby::after {
 // TODO 用户改名提醒
 
 // 功能优化：优先
-// TODO 关注按钮联动
 // TODO 黑名单按钮
-// TODO 版面浮动名片、好友浮动名片添加代表作、关注、拉黑
 // TODO 代表作标题链接、省略
-// TODO 代表作进度条
+// TODO 保存文本链接处理
+// TODO 保存选中时无选中
 
 // 功能优化
-// TODO 文本链接处理
+// TODO 版面浮动名片、好友浮动名片添加代表作、关注、拉黑
+// TODO 代表作进度条
 // TODO 黑名单等级
 // TODO 自动切换全贴/选中？
 // TODO 滚动条悬停显示
 // TODO 设置按钮hover
 // TODO 无代表作时居中
-// TODO 保存选中时无选中
 
 // 设置优化
 // TODO 换行参数
@@ -2796,7 +2790,6 @@ th.helper-sortby::after {
 // TODO 删除键值
 
 // 代码优化
-// insertHelperLink
 // firefox
 // hover text
 // 保证弹窗弹出
