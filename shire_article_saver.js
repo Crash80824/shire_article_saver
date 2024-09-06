@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.1.1
+// @version      0.10.1.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -413,7 +413,7 @@ label:has(> .helper-toggle-switch) > input {
 }
 
 .helper-toggle-switch::after {
-  content: "";
+  content: '';
   position: absolute;
   top: 2px;
   left: 2px;
@@ -473,7 +473,7 @@ label:has(> .helper-toggle-switch)
 }
 
 .helper-multicheck-item:not(:first-child)::before {
-  content: "";
+  content: '';
   position: absolute;
   top: 0;
   bottom: 0;
@@ -546,12 +546,48 @@ label:has(> .helper-toggle-switch)
   background-color: #0063e6;
 }
 
+.helper-follow-button::before {
+  content: '关注';
+}
+
+.helper-follow-button.hfb-special::before {
+  content: '特别关注';
+}
+
+.helper-follow-button.hfb-thread::before {
+  content: '在本贴关注';
+}
+
 .helper-followed-button {
   background-color: #8491a5;
 }
 
 .helper-followed-button:hover {
   background-color: #758195;
+}
+
+.helper-followed-button::before {
+  content: '已关注';
+}
+
+.helper-followed-button:hover::before {
+  content: '取消关注';
+}
+
+.helper-followed-button.hfb-special::before {
+  content: '已特关';
+}
+
+.helper-followed-button.hfb-special:hover::before {
+  content: '取消特关';
+}
+
+.helper-followed-button.hfb-thread::before {
+  content: '已在本贴关注';
+}
+
+.helper-followed-button.hfb-thread:hover::before {
+  content: '在本贴取关';
 }
 
 .helper-checkbox {
@@ -567,7 +603,7 @@ label:has(> .helper-toggle-switch)
 }
 
 .helper-checkbox:before {
-  content: "";
+  content: '';
   background-color: black;
   display: block;
   position: absolute;
@@ -1393,37 +1429,26 @@ th.helper-sortby::after {
 
     function createFollowButton(info) {
         // info: { uid, name, tid, title }
-        let follow_text;
-        let followed_text;
-        let unfollow_text;
-        switch (info.tid) {
-            case -1: {
-                follow_text = '特别关注';
-                followed_text = '已特关';
-                unfollow_text = '取消特关';
-                info.title = '所有回复';
-                break;
-            }
-            case 0: {
-                follow_text = '关注';
-                followed_text = '已关注';
-                unfollow_text = '取消关注';
-                info.title = '所有主题';
-                break;
-            }
-            default: {
-                follow_text = '在本帖关注';
-                followed_text = '已在本帖关注';
-                unfollow_text = '在本帖取关';
-            }
-        }
-
         const follow_btn = docre('button');
         const follow_status = GM_getValue(info.uid + '_followed_threads', []);
         const followed = follow_status.some(e => e.tid == info.tid);
         follow_btn.type = 'button';
         follow_btn.className = followed ? 'helper-followed-button' : 'helper-follow-button';
-        follow_btn.textContent = followed ? followed_text : follow_text;
+
+        switch (info.tid) {
+            case -1: {
+                follow_btn.classList.add('hfb-special');
+                info.title = '所有回复';
+                break;
+            }
+            case 0: {
+                info.title = '所有主题';
+                break;
+            }
+            default: {
+                follow_btn.classList.add('hfb-thread');
+            }
+        }
 
         follow_btn.addEventListener('click', async () => {
             const followed_num = GM_getValue('followed_num', 0);
@@ -1435,21 +1460,9 @@ th.helper-sortby::after {
             const followed = follow_status.some(e => e.tid == info.tid);
             follow_btn.classList.remove(followed ? 'helper-followed-button' : 'helper-follow-button');
             follow_btn.classList.add(!followed ? 'helper-followed-button' : 'helper-follow-button');
-            follow_btn.textContent = !followed ? followed_text : follow_text;
             recordFollow(info, !followed);
             if (info.tid == -1 && !followed) { // 特关同时也关注主题
                 recordFollow({ uid: info.uid, name: info.name, tid: 0, title: '所有主题' }, true);
-            }
-        });
-
-        follow_btn.addEventListener('mouseover', () => {
-            if (follow_btn.className == 'helper-followed-button') {
-                follow_btn.textContent = unfollow_text;
-            }
-        });
-        follow_btn.addEventListener('mouseout', () => {
-            if (follow_btn.className == 'helper-followed-button') {
-                follow_btn.textContent = followed_text;
             }
         });
 
