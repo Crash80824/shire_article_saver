@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.3.4
+// @version      0.10.3.5
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1171,6 +1171,14 @@ th.helper-sortby::after {
             await saveFile(title_name, text, content.attach, content.op);
         }
         else {
+            if (type == 'checked') {
+                const checked_posts = await GM.getValue(thread_id + '_checked_posts', []);
+                if (checked_posts.length == 0) {
+                    alert('没有需要保存的内容, 请检查设置.');
+                    return;
+                }
+            }
+
             let filename = title_name;
             let text = file_info;
 
@@ -2860,9 +2868,8 @@ th.helper-sortby::after {
 // FIXME merged save 没有帖子分割线
 // FIXME getSpaceAuthor
 // FIXME 使用username的空间
-// FIXME 自动回复内容
+// FIXME 恢复自动回复内容
 // FIXME 隐藏调试tab
-// FIXME 无选中时会下载空文件
 // TODO 设置用词
 // FIXME 下载完后checkbox不会消失
 // FIXME 修复进度条
@@ -2906,6 +2913,7 @@ th.helper-sortby::after {
 // 保证弹窗弹出
 // debug log
 // TODO changePageAllCheckboxs
+// TODO updatePageDoc
 // TODO css classname data清理
 // ?. ?? 运算符
 
