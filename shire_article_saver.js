@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.3.1
+// @version      0.10.3.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -443,8 +443,8 @@ label:has(> .helper-toggle-switch)
   background-color: inherit;
   color: inherit;
   border: 1px solid #ccc;
-  padding: 0 10px;
-  width: 6rem;
+  padding: 0 30px 0 10px;
+  width: max-content;
   transition: background-color 0.3s, border-color 0.3s;
   cursor: pointer;
   outline: none;
@@ -571,7 +571,7 @@ label:has(> .helper-toggle-switch)
 }
 
 .helper-f-button.hfb-thread:not([data-hfb-followed])::before {
-  content: '在本贴关注';
+  content: '在本帖关注';
 }
 
 .helper-f-button.hfb-normal[data-hfb-followed]::before {
@@ -591,11 +591,11 @@ label:has(> .helper-toggle-switch)
 }
 
 .helper-f-button.hfb-thread[data-hfb-followed]::before {
-  content: '已在本贴关注';
+  content: '已在本帖关注';
 }
 
 .helper-f-button.hfb-thread[data-hfb-followed]:hover::before {
-  content: '在本贴取关';
+  content: '在本帖取关';
 }
 
 .helper-checkbox {
@@ -805,6 +805,9 @@ th.helper-sortby::after {
         }
     };
 
+    // ========================================================================================================
+    // 获取页面内容
+    // ========================================================================================================
     function createURLInDomain(params) {
         if (!'loc' in params) {
             return;
@@ -841,9 +844,6 @@ th.helper-sortby::after {
         }
     }
 
-    // ========================================================================================================
-    // 获取页面内容
-    // ========================================================================================================
     function formatPostNodeText(node) {
         let text = '';
         switch (node.tagName + '.' + node.className) {
@@ -919,6 +919,7 @@ th.helper-sortby::after {
     }
 
     async function getPageContent(page_doc, type = 'main') {
+        // type: main, checked, all
         if (!page_doc.original_url) {
             page_doc.original_url = page_doc.URL;
         }
@@ -962,6 +963,30 @@ th.helper-sortby::after {
             }
         }
         return { tid, page_id, text, attach, op };
+    }
+
+    async function getAllPageContent(tid, authorid = '', type = 'all') { // type: all, checked
+        const first_page = await getPageDocInDomain({ loc: 'forum', mod: 'viewthread', tid, authorid });
+        const page_num = (qS('#pgt > div > div > label > span', first_page) || { title: '共 1 页' }).title.match(/共 (\d+) 页/)[1];
+
+        const promises = [getPageContent(first_page, type)].concat(Array.from({ length: page_num - 1 }, async (_, i) => {
+            const page = await getPageDocInDomain({ loc: 'forum', mod: 'viewthread', tid, page: i + 2, authorid });
+            return await getPageContent(page, type);
+        }));
+
+        let content_list = await Promise.all(promises);
+        content_list.sort((a, b) => a.page_id - b.page_id);
+
+        let text = '';
+        let attach = [];
+        let op = [];
+        content_list.forEach(content => {
+            text += content.text + '\n';
+            attach.push(...content.attach);
+            op.push(...content.op);
+        });
+
+        return { tid, text, attach, op };
     }
 
     // ========================================================================================================
@@ -1125,8 +1150,6 @@ th.helper-sortby::after {
         else {
             let filename = title_name;
             let text = file_info;
-            let attach = [];
-            let op = [];
 
             const the_only_author = theOnlyAuthorInfo();
 
@@ -1138,7 +1161,7 @@ th.helper-sortby::after {
                 }
             }
             else {
-                if (type == 'page') {
+                if (type == 'all') {
                     filename_suffix = '全帖';
                 }
                 else if (type == 'checked') {
@@ -1147,68 +1170,67 @@ th.helper-sortby::after {
             }
             filename += '（' + filename_suffix + '）';
 
-            const page_num = (qS('#pgt > div > div > label > span') || { title: '共 1 页' }).title.match(/共 (\d+) 页/)[1];
-            const promises = Array.from({ length: page_num }, (_, i) => i + 1).map(async page_id => {
-                const URL_params = { loc: 'forum', mod: 'viewthread', tid: thread_id, page: page_id };
-                if (the_only_author) {
-                    URL_params.authorid = the_only_author.uid;
-                }
-                const page_doc = await getPageDocInDomain(URL_params);
-                return getPageContent(page_doc, type);
-            });
-            let content_list = await Promise.all(promises);
-            content_list.sort((a, b) => a.page_id - b.page_id);
-            text += content_list.map(e => e.text).join('');
-            attach.push(...content_list.map(e => e.attach).flat());
-            op.push(...content_list.map(e => e.op).flat());
-            await saveFile(filename, text, attach, op);
+            const content_list = await getAllPageContent(thread_id, the_only_author ? the_only_author.uid : '', type);
+            await saveFile(filename, text + content_list.text, content_list.attach, content_list.op);
             if (type == 'checked') {
                 GM.deleteValue(thread_id + '_checked_posts');
             }
         }
     }
 
-    async function saveMergedThreads() {
-        createTopProgressbar();
-        let progress = { value: 0 };
-
+    async function saveMergedThreads(type = 'main') {
         const uid = document.URL.parseURL().uid;
         let checked_threads = GM_getValue(uid + '_checked_threads', []);
-        progress.value = 10;
-        updateTopProgressbar(progress.value);
 
         if (checked_threads.length == 0) {
             alert('没有需要保存的内容, 请检查设置.');
             return;
         }
 
-        let dt = Math.ceil(800 * 100 / checked_threads.length) / 1000;
-        let filename = '';
-        const promises = checked_threads.map(async tid => {
-            const URL_params = { loc: 'forum', mod: 'viewthread', tid };
-            const thread_doc = await getPageDocInDomain(URL_params);
-            const thread_title = qS('head > title', thread_doc).textContent.slice(0, -8);
-            filename = commonPrefix(filename, thread_title);
-            let thread_content = '';
-            if (hasReadPermission(thread_doc)) {
-                thread_content = (getPageContent(thread_doc, 'main'));
-            }
-            else {
-                thread_content = { tid, text: '没有权限查看此贴\n' };
-            }
-            progress.value += dt;
-            updateTopProgressbar(progress.value);
-            return thread_content;
-        });
-        let content_list = await Promise.all(promises);
-        content_list = content_list.sort((a, b) => a.tid - b.tid);
-        const content = content_list.map(e => e.text).join('\n');
-        filename = filename.replace(/[ \t\r\n(（【［“‘]/g, '')
-        filename += '（合集）';
+        createTopProgressbar();
+        let progress = { value: 5 };
+        updateTopProgressbar(progress.value);
 
-        const blob = new Blob([content], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        await downloadFromURL({ url, title: filename, is_blob: true }, null, progress, 10);
+        let dt = Math.ceil(850 * 100 / checked_threads.length) / 1000;
+        let filename = '';
+        let promises = [];
+        switch (type) {
+            case 'main': {
+                promises = checked_threads.map(async tid => {
+                    const URL_params = { loc: 'forum', mod: 'viewthread', tid };
+                    const thread_doc = await getPageDocInDomain(URL_params);
+                    const thread_title = qS('head > title', thread_doc).textContent.slice(0, -8);
+                    filename = commonPrefix(filename, thread_title);
+                    let thread_content = '';
+                    if (hasReadPermission(thread_doc)) {
+                        thread_content = (getPageContent(thread_doc, 'main'));
+                    }
+                    else {
+                        thread_content = { tid, text: '没有权限查看此帖\n' };
+                    }
+                    progress.value += dt;
+                    updateTopProgressbar(progress.value);
+                    return thread_content;
+                });
+                let content_list = await Promise.all(promises);
+                content_list = content_list.sort((a, b) => a.tid - b.tid);
+                const content = content_list.map(e => e.text).join('\n');
+                filename = filename.replace(/[ \t\r\n(（【［“‘]/g, '')
+                filename += '（合集）';
+
+                const blob = new Blob([content], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                await downloadFromURL({ url, title: filename, is_blob: true }, null, progress, 10);
+                break;
+            }
+            case 'all': {
+
+            }
+            case 'author': {
+                break;
+            }
+        }
+
         GM.deleteValue(uid + '_checked_threads');
     }
 
@@ -1760,10 +1782,10 @@ th.helper-sortby::after {
         }
 
         if (the_only_author) {
-            insertInteractiveLink('保存作者  ', saveFunc('page'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+            insertInteractiveLink('保存作者  ', saveFunc('all'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
         }
         else {
-            insertInteractiveLink('保存全帖  ', saveFunc('page'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+            insertInteractiveLink('保存全帖  ', saveFunc('all'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
         }
 
         insertInteractiveLink('保存选中  ', saveFunc('checked'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
@@ -1781,7 +1803,22 @@ th.helper-sortby::after {
                 insertSpaceCheckbox();
 
                 const pos = qS('#delform > table > tbody > tr.th > th');
-                insertInteractiveLink('  合并保存', () => { saveMergedThreads().then(() => removeTopProgressbar()) }, pos);
+                insertInteractiveLink('  下载 ', () => { saveMergedThreads().then(() => removeTopProgressbar()) }, pos);
+                // const save_link = insertInteractiveLink('  下载 ', null, pos);
+
+                const save_select = docre('select');
+                const save_types = ['main', 'all', 'author'];
+                const save_types_text = ['主楼（合并）', '全帖（打包）', '作者（打包）'];
+                for (let i = 0; i < save_types.length; i++) {
+                    const option = docre('option');
+                    option.value = save_types[i];
+                    option.textContent = save_types_text[i];
+                    save_select.appendChild(option);
+                    if (save_types[i] == hs.default_merge_mode) {
+                        option.selected = true;
+                    }
+                }
+                pos.appendChild(save_select);
             }
             if (view == 'me' && from == 'space') {
                 const user_name = getSpaceAuthor();
@@ -2309,6 +2346,12 @@ th.helper-sortby::after {
                             ['不归档', '分类归档', '全部归档']]
                     },
                     // 选择默认合并下载模式
+                    {
+                        title: '默认合并保存方式', type: 'select', args: [
+                            'default_merge_mode',
+                            ['main', 'author', 'all'],
+                            ['主楼（合并）', '作者（打包）', '全帖（打包）']]
+                    },
                     // 开启自动回复
                     {
                         title: '自动回复', type: 'switch', args: ['enable_auto_reply']
@@ -2805,6 +2848,7 @@ th.helper-sortby::after {
 // FIXME 自动回复内容
 // FIXME 隐藏调试tab
 // FIXME 无选中时会下载空文件
+// TODO 设置用词
 
 // 功能更新：优先
 // TODO 合并保存选项
@@ -2816,9 +2860,10 @@ th.helper-sortby::after {
 
 // 功能优化
 // TODO 版面浮动名片、好友浮动名片添加代表作、关注、拉黑
+// TODO 进度条优化
 // TODO 代表作进度条
 // TODO 黑名单等级
-// TODO 自动切换全贴/选中？
+// TODO 自动切换全帖/选中？
 // TODO 滚动条悬停显示
 // TODO 设置按钮hover
 // TODO 无代表作时居中
@@ -2856,6 +2901,7 @@ th.helper-sortby::after {
 // TODO NSFW（跳过题图）
 // TODO 精华推荐
 // TODO 用户改名提醒
+// TODO 图片不区分楼层
 
 // 搁置：负载
 // TODO 上一集、下一集
