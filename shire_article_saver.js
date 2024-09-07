@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.3.5
+// @version      0.10.4
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -975,6 +975,7 @@ th.helper-sortby::after {
             return await getPageContent(first_page, type);
         }
 
+        const title = qS('meta[name="keywords"]', first_page).content;
         const page_num = (qS('#pgt > div > div > label > span', first_page) || { title: '共 1 页' }).title.match(/共 (\d+) 页/)[1];
 
         const promises = [getPageContent(first_page, type)].concat(Array.from({ length: page_num - 1 }, async (_, i) => {
@@ -994,7 +995,7 @@ th.helper-sortby::after {
             op.push(...content.op);
         });
 
-        return { tid, text, attach, op };
+        return { tid, title, text, attach, op };
     }
 
     // ========================================================================================================
@@ -1218,34 +1219,33 @@ th.helper-sortby::after {
             return;
         }
 
-        let filename = '';
-        switch (type) {
-            case 'main': {
-                const promises = checked_threads.map(tid => getAllPageContent(tid, uid, 'main'));
-                let content_list = await Promise.all(promises);
-                content_list = content_list.sort((a, b) => a.tid - b.tid);
-                const content = content_list.map(e => e.text).join('\n');
-                filename = filename.replace(/[ \t\r\n(（【［“‘]/g, '')
-                filename += '（合集）';
-
-                const blob = new Blob([content], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                await downloadFromURL({ url, title: filename, is_blob: true }, null);
-                break;
-            }
-            case 'all': {
-                // const promises = checked_threads.map(tid => getAllPageContent(tid, '', 'all'));
-                // let content_list = await Promise.all(promises);
-                // createZipAndDownloadFromURLs(filename, content_list.flatMap(e => e.attach), null, 100);
-                alert('暂不支持');
-                break;
-            }
-            case 'author': {
-                // const promises = checked_threads.map(tid => getAllPageContent(tid, uid, 'all'));
-                // let content_list = await Promise.all(promises);
-                alert('暂不支持');
-                break;
-            }
+        if (type == 'main') {
+            const promises = checked_threads.map(tid => getAllPageContent(tid, uid, 'main'));
+            let content_list = await Promise.all(promises);
+            content_list = content_list.sort((a, b) => a.tid - b.tid);
+            const content = content_list.map(e => e.text).join('\n');
+            let filename = content_list.reduce((acc, cur) => commonPrefix(acc, cur.title), content_list[0].title);
+            filename = filename.replace(/[ \t\r\n(（【［“‘]/g, '')
+            filename += '（合集）';
+            await downloadFromURL({
+                url: URL.createObjectURL(new Blob([content], { type: 'text/plain' })),
+                title: filename,
+                is_blob: true
+            },
+                null);
+        }
+        else {
+            const promises = checked_threads.map(tid => getAllPageContent(tid, type == 'author' ? uid : '', type));
+            let content_list = await Promise.all(promises);
+            let filename = content_list.reduce((acc, cur) => commonPrefix(acc, cur.title), content_list[0].title);
+            filename += type == 'author' ? '（作者）' : ''
+            content_list = content_list.map(e => {
+                return {
+                    title: e.title,
+                    url: URL.createObjectURL(new Blob([e.text], { type: 'text/plain' }))
+                }
+            });
+            createZipAndDownloadFromURLs(filename, content_list);
         }
 
         GM.deleteValue(uid + '_checked_threads');
@@ -2855,6 +2855,11 @@ th.helper-sortby::after {
 
 })();
 
+// 发布前检查
+// FIXME 恢复自动回复内容
+// FIXME 隐藏调试tab
+// TODO 设置用词
+// TODO 测试非当前doc时attach&op的下载
 
 // 问题修复
 // FIXME 补充内容、引用内无需换行
@@ -2863,20 +2868,13 @@ th.helper-sortby::after {
 // FIXME op未加载的情况
 // FIXME 参见tg详情
 // FIXME chrome支持
-// FIXME 更新通知、代表作中标题的精华、置顶、关闭标记
+// FIXME 更新通知、代表作、合并下载中标题的精华、置顶、关闭标记、分区名
 // TODO 测试自动回复
 // FIXME merged save 没有帖子分割线
 // FIXME getSpaceAuthor
 // FIXME 使用username的空间
-// FIXME 恢复自动回复内容
-// FIXME 隐藏调试tab
-// TODO 设置用词
 // FIXME 下载完后checkbox不会消失
 // FIXME 修复进度条
-// TODO 测试非当前doc时attach&op的下载
-
-// 功能更新：优先
-// TODO 合并保存选项
 
 // 功能优化：优先
 // TODO 代表作标题链接、省略
