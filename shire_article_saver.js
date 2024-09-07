@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.3.2
+// @version      0.10.3.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -918,8 +918,7 @@ th.helper-sortby::after {
         return { text, attach, op };
     }
 
-    async function getPageContent(page_doc, type = 'main') {
-        // type: main, checked, all
+    async function getPageContent(page_doc, type = 'main') { // type: main, checked, all
         if (!page_doc.original_url) {
             page_doc.original_url = page_doc.URL;
         }
@@ -965,8 +964,17 @@ th.helper-sortby::after {
         return { tid, page_id, text, attach, op };
     }
 
-    async function getAllPageContent(tid, authorid = '', type = 'all') { // type: all, checked
+    async function getAllPageContent(tid, authorid = '', type = 'all') { // type: main, all, checked
         const first_page = await getPageDocInDomain({ loc: 'forum', mod: 'viewthread', tid, authorid });
+
+        if (!hasReadPermission(first_page)) {
+            return { tid, text: '没有阅读权限', attach: [], op: [] };
+        }
+
+        if (type == 'main') {
+            return await getPageContent(first_page, type);
+        }
+
         const page_num = (qS('#pgt > div > div > label > span', first_page) || { title: '共 1 页' }).title.match(/共 (\d+) 页/)[1];
 
         const promises = [getPageContent(first_page, type)].concat(Array.from({ length: page_num - 1 }, async (_, i) => {
@@ -1187,31 +1195,10 @@ th.helper-sortby::after {
             return;
         }
 
-        createTopProgressbar();
-        let progress = { value: 5 };
-        updateTopProgressbar(progress.value);
-
-        let dt = Math.ceil(850 * 100 / checked_threads.length) / 1000;
         let filename = '';
-        let promises = [];
         switch (type) {
             case 'main': {
-                promises = checked_threads.map(async tid => {
-                    const URL_params = { loc: 'forum', mod: 'viewthread', tid };
-                    const thread_doc = await getPageDocInDomain(URL_params);
-                    const thread_title = qS('head > title', thread_doc).textContent.slice(0, -8);
-                    filename = commonPrefix(filename, thread_title);
-                    let thread_content = '';
-                    if (hasReadPermission(thread_doc)) {
-                        thread_content = (getPageContent(thread_doc, 'main'));
-                    }
-                    else {
-                        thread_content = { tid, text: '没有权限查看此帖\n' };
-                    }
-                    progress.value += dt;
-                    updateTopProgressbar(progress.value);
-                    return thread_content;
-                });
+                const promises = checked_threads.map(tid => getAllPageContent(tid, uid, 'main'));
                 let content_list = await Promise.all(promises);
                 content_list = content_list.sort((a, b) => a.tid - b.tid);
                 const content = content_list.map(e => e.text).join('\n');
@@ -1220,13 +1207,20 @@ th.helper-sortby::after {
 
                 const blob = new Blob([content], { type: 'text/plain' });
                 const url = URL.createObjectURL(blob);
-                await downloadFromURL({ url, title: filename, is_blob: true }, null, progress, 10);
+                await downloadFromURL({ url, title: filename, is_blob: true }, null);
                 break;
             }
             case 'all': {
-
+                // const promises = checked_threads.map(tid => getAllPageContent(tid, '', 'all'));
+                // let content_list = await Promise.all(promises);
+                // createZipAndDownloadFromURLs(filename, content_list.flatMap(e => e.attach), null, 100);
+                alert('暂不支持');
+                break;
             }
             case 'author': {
+                // const promises = checked_threads.map(tid => getAllPageContent(tid, uid, 'all'));
+                // let content_list = await Promise.all(promises);
+                alert('暂不支持');
                 break;
             }
         }
@@ -1803,9 +1797,6 @@ th.helper-sortby::after {
                 insertSpaceCheckbox();
 
                 const pos = qS('#delform > table > tbody > tr.th > th');
-                insertInteractiveLink('  下载 ', () => { saveMergedThreads().then(() => removeTopProgressbar()) }, pos);
-                // const save_link = insertInteractiveLink('  下载 ', null, pos);
-
                 const save_select = docre('select');
                 const save_types = ['main', 'all', 'author'];
                 const save_types_text = ['主楼（合并）', '全帖（打包）', '作者（打包）'];
@@ -1818,6 +1809,16 @@ th.helper-sortby::after {
                         option.selected = true;
                     }
                 }
+
+                const save_link = insertInteractiveLink('  下载 ', () => saveMergedThreads(save_select.value), pos);
+                save_select.addEventListener('change', () => {
+                    const new_save_link = save_link.cloneNode(true);
+                    new_save_link.addEventListener('click', () => {
+                        saveMergedThreads(save_select.value);
+                    });
+                    save_link.replaceWith(new_save_link);
+                });
+
                 pos.appendChild(save_select);
             }
             if (view == 'me' && from == 'space') {
@@ -2849,6 +2850,8 @@ th.helper-sortby::after {
 // FIXME 隐藏调试tab
 // FIXME 无选中时会下载空文件
 // TODO 设置用词
+// FIXME 下载完后checkbox不会消失
+// FIXME 合并下载进度条
 
 // 功能更新：优先
 // TODO 合并保存选项
