@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.3.3
+// @version      0.10.3.4
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1001,9 +1001,12 @@ th.helper-sortby::after {
     // 保存与下载
     // ========================================================================================================
     function downloadFromURL(target, zip = null, progress = null, dt = null) {
+        // 直接下载或者保存到zip
+        // progress={value} 当前进度条百分比
+        // dt 完成后增加的进度条百分比
         const url = target.url;
         let title = target.title;
-        const is_blob = Boolean(target.is_blob);
+        const is_blob = target?.is_blob || false;
 
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -1053,6 +1056,19 @@ th.helper-sortby::after {
         });
     }
 
+    async function insertZip(target_list, zip, progress = null, dt = null) {
+        for (let target of target_list) {
+            const is_dir = target?.is_dir ?? false;
+            if (is_dir) {
+                const dir = zip.folder(target.title);
+                insertZip(target.files, dir);
+            }
+            else {
+                await downloadFromURL(target, zip);
+            }
+        }
+    }
+
     async function createZipAndDownloadFromURLs(zip_name, target_list, progress = null, dt = null) {
         if (target_list.length == 0) {
             return Promise.resolve();
@@ -1067,8 +1083,7 @@ th.helper-sortby::after {
         if (dt) {
             ddt = dt * Math.ceil(700 / target_list.length) / 1000;
         }
-        const promises = target_list.map(target => downloadFromURL(target, zip, progress, ddt));
-        await Promise.all(promises);
+        await insertZip(target_list, zip);
 
         return await new Promise(async (resolve, reject) => {
             const content = await zip.generateAsync({ type: 'blob' });
@@ -2787,7 +2802,6 @@ th.helper-sortby::after {
         const post = qS('#' + submit_id);
         submit_id = submit_id.replace('form', '');
         // const original_onsubmit_str = post.getAttribute('onsubmit').toString();
-        // console.log(original_onsubmit_str);
         post.setAttribute('onsubmit', `if(typeof smilies_type == 'object'){for (var typeid in smilies_array){for (var page in smilies_array[typeid]){for(var i in smilies_array[typeid][page]){re=new RegExp(preg_quote(smilies_array[typeid][page][i][1]),"g");this.message.value=this.message.value.replace(re,'[img]'+('${original_smilies_types}'.split(',').includes(typeid.toString())?(STATICURL+'image/smiley/'+ smilies_type['_' + typeid][1] + '/'):smilies_type['_' + typeid][1])+smilies_array[typeid][page][i][2]+"[/img]");}}}}`);
     }
 
@@ -2851,7 +2865,8 @@ th.helper-sortby::after {
 // FIXME 无选中时会下载空文件
 // TODO 设置用词
 // FIXME 下载完后checkbox不会消失
-// FIXME 合并下载进度条
+// FIXME 修复进度条
+// TODO 测试非当前doc时attach&op的下载
 
 // 功能更新：优先
 // TODO 合并保存选项
@@ -2874,6 +2889,7 @@ th.helper-sortby::after {
 // 设置优化
 // TODO 换行参数
 // TODO 提醒参数
+// TODO 获取帖子信息参数
 // TODO 显示按钮和订阅更新分开设置
 // TODO 代表作数量
 // TODO 历史消息上限
@@ -2891,6 +2907,7 @@ th.helper-sortby::after {
 // debug log
 // TODO changePageAllCheckboxs
 // TODO css classname data清理
+// ?. ?? 运算符
 
 // 搁置: 不会
 // TODO 上传表情
