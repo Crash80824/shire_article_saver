@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.4
+// @version      0.10.4.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -116,6 +116,7 @@
     // ========================================================================================================
     // 通用工具
     // ========================================================================================================
+    const decimalCeil = (num, precision = 4) => Math.ceil(num * Math.pow(10, precision)) / Math.pow(10, precision);
     const commonPrefix = ((str1, str2) => {
         return str1 === '' ? str2 : (str2 === '' ? str1 : (() => {
             let i = 0;
@@ -924,6 +925,7 @@ th.helper-sortby::after {
         }
 
         const tid = page_doc.original_url.parseURL().tid;
+        const title = qS('meta[name="keywords"]', page_doc).content;
         let page_id = page_doc.original_url.parseURL().page;
         if (!page_id) {
             page_id = 1;
@@ -961,26 +963,34 @@ th.helper-sortby::after {
                 break;
             }
         }
-        return { tid, page_id, text, attach, op };
+        return { tid, title, page_id, text, attach, op };
     }
 
-    async function getAllPageContent(tid, authorid = '', type = 'all') { // type: main, all, checked
+    async function getAllPageContent(tid, authorid = '', type = 'all', progress = null, dt = null) { // type: main, all, checked
         const first_page = await getPageDocInDomain({ loc: 'forum', mod: 'viewthread', tid, authorid });
-
+        const title = qS('meta[name="keywords"]', first_page).content;
         if (!hasReadPermission(first_page)) {
-            return { tid, text: '没有阅读权限', attach: [], op: [] };
+            updateProgressbar(progress, dt);
+            return { tid, title, text: '没有阅读权限', attach: [], op: [] };
         }
 
         if (type == 'main') {
-            return await getPageContent(first_page, type);
+            updateProgressbar(progress, decimalCeil(0.8 * dt));
+            const content = await getPageContent(first_page, type);
+            updateProgressbar(progress, decimalCeil(0.2 * dt));
+            return content;
         }
 
-        const title = qS('meta[name="keywords"]', first_page).content;
         const page_num = (qS('#pgt > div > div > label > span', first_page) || { title: '共 1 页' }).title.match(/共 (\d+) 页/)[1];
+        const ddt = decimalCeil(dt / page_num);
+        updateProgressbar(progress, ddt);
 
         const promises = [getPageContent(first_page, type)].concat(Array.from({ length: page_num - 1 }, async (_, i) => {
             const page = await getPageDocInDomain({ loc: 'forum', mod: 'viewthread', tid, page: i + 2, authorid });
-            return await getPageContent(page, type);
+            updateProgressbar(progress, 0.8 * ddt);
+            const content = await getPageContent(page, type);
+            updateProgressbar(progress, 0.2 * ddt);
+            return content;
         }));
 
         let content_list = await Promise.all(promises);
@@ -1029,10 +1039,7 @@ th.helper-sortby::after {
                         const blob = response.response;
                         if (zip !== null && response.status == 200) {
                             zip.file(`${title}.${ext}`, blob);
-                            if (progress && dt) {
-                                progress.value += dt;
-                                updateTopProgressbar(progress.value);
-                            }
+                            updateProgressbar(progress, dt);
                         }
                         else {
                             const reader = new FileReader();
@@ -1042,10 +1049,7 @@ th.helper-sortby::after {
                                 a.download = `${title}.${ext}`;
                                 a.href = reader.result;
                                 a.click();
-                                if (progress && dt) {
-                                    progress.value += dt;
-                                    updateTopProgressbar(progress.value);
-                                }
+                                updateProgressbar(progress, dt);
                             }
                             const revokeURL = () => is_blob ? URL.revokeObjectURL(url) : null;
                             reader.onloadend = revokeURL;
@@ -1058,14 +1062,22 @@ th.helper-sortby::after {
     }
 
     async function insertZip(target_list, zip, progress = null, dt = null) {
+        const calcZipTagrgetFileNum = target_list => {
+            if (!target_list.hasOwnProperty('files_num')) {
+                target_list.files_num = target_list.reduce((acc, cur) => acc + (cur?.is_dir ? calcZipTagrgetFileNum(cur.files) : 1), 0);
+            }
+            return target_list.files_num;
+        };
+        calcZipTagrgetFileNum(target_list);
+
+        const ddt = dt ? dt / target_list.files_num : null;
         for (let target of target_list) {
-            const is_dir = target?.is_dir ?? false;
-            if (is_dir) {
+            if (target?.is_dir) {
                 const dir = zip.folder(target.title);
-                insertZip(target.files, dir);
+                insertZip(target.files, dir, progress, ddt * target.files_num);
             }
             else {
-                await downloadFromURL(target, zip);
+                await downloadFromURL(target, zip, progress, ddt);
             }
         }
     }
@@ -1080,22 +1092,15 @@ th.helper-sortby::after {
         }
 
         const zip = new JSZip();
-        let ddt = null;
-        if (dt) {
-            ddt = dt * Math.ceil(700 / target_list.length) / 1000;
-        }
-        await insertZip(target_list, zip);
-
+        await insertZip(target_list, zip, progress, decimalCeil(0.75 * dt));
+        console.log(zip_name);
         return await new Promise(async (resolve, reject) => {
             const content = await zip.generateAsync({ type: 'blob' });
             const a = docre('a');
             a.download = zip_name + '.zip';
             a.href = URL.createObjectURL(content);
             a.click();
-            if (progress && dt) {
-                progress.value += Math.ceil(dt * 300) / 1000;
-                updateTopProgressbar(progress.value);
-            }
+            updateProgressbar(progress, decimalCeil(0.25 * dt));
             URL.revokeObjectURL(a.href);
             resolve();
         });
@@ -1130,13 +1135,14 @@ th.helper-sortby::after {
             return;
         }
 
-        createTopProgressbar();
-        let progress = { value: 0 };
+        const top_progressbar = createTopProgressbar();
+        let progress = { value: 0, bar: top_progressbar };
         let promises = [];
 
         switch (hs.files_pack_mode) {
             case 'no': {
-                const dt = Math.ceil(1000 * 100 / download_list.reduce((acc, cur) => acc + cur.list.length, 0)) / 1000;
+                const files_num = download_list.reduce((acc, cur) => acc + cur.list.length, 0);
+                const dt = decimalCeil(100 / files_num);
                 download_list.forEach(target =>
                     target.list.forEach(e =>
                         promises.push(downloadFromURL(e, null, progress, dt)
@@ -1144,7 +1150,7 @@ th.helper-sortby::after {
                 break;
             }
             case 'single': {
-                const dt = Math.ceil(1000 * 100 / download_list.length) / 1000;
+                const dt = decimalCeil(100 / download_list.length);
                 download_list.forEach(target =>
                     promises.push(createZipAndDownloadFromURLs(`${filename}_${target.name}`, target.list, progress, dt)
                     ));
@@ -1155,9 +1161,6 @@ th.helper-sortby::after {
                 break;
             }
         }
-
-        await Promise.all(promises);
-        removeTopProgressbar();
     }
 
     async function saveThread(type = 'main') {
@@ -1219,8 +1222,12 @@ th.helper-sortby::after {
             return;
         }
 
+        const bar = createTopProgressbar();
+        const progress = { value: 0, bar };
+
         if (type == 'main') {
-            const promises = checked_threads.map(tid => getAllPageContent(tid, uid, 'main'));
+            const dt = decimalCeil(90 / checked_threads.length);
+            const promises = checked_threads.map(tid => getAllPageContent(tid, uid, 'main', progress, dt));
             let content_list = await Promise.all(promises);
             content_list = content_list.sort((a, b) => a.tid - b.tid);
             const content = content_list.map(e => e.text).join('\n');
@@ -1232,20 +1239,21 @@ th.helper-sortby::after {
                 title: filename,
                 is_blob: true
             },
-                null);
+                null, progress, 10);
         }
         else {
-            const promises = checked_threads.map(tid => getAllPageContent(tid, type == 'author' ? uid : '', type));
+            const dt = decimalCeil(85 / checked_threads.length);
+            const promises = checked_threads.map(tid => getAllPageContent(tid, type == 'author' ? uid : '', type, progress, dt));
             let content_list = await Promise.all(promises);
             let filename = content_list.reduce((acc, cur) => commonPrefix(acc, cur.title), content_list[0].title);
-            filename += type == 'author' ? '（作者）' : ''
+            filename += type == 'author' ? '（合集仅作者）' : '（合集）'
             content_list = content_list.map(e => {
                 return {
                     title: e.title,
                     url: URL.createObjectURL(new Blob([e.text], { type: 'text/plain' }))
                 }
             });
-            createZipAndDownloadFromURLs(filename, content_list);
+            createZipAndDownloadFromURLs(filename, content_list, progress, 15);
         }
 
         GM.deleteValue(uid + '_checked_threads');
@@ -1335,7 +1343,7 @@ th.helper-sortby::after {
         const URL_params = { loc: 'forum', mod: 'viewthread', tid, authorid: uid, page: large_page_num, mobile: 2 };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const posts_in_page = getPostsInPage(page_doc);
-        const thread_title = qS('head > title', page_doc).textContent.slice(0, -8);
+        const thread_title = qS('meta[name="keywords"]', page_doc).content;
         let new_posts = [];
         let found = false;
         let pids = [];
@@ -1597,17 +1605,19 @@ th.helper-sortby::after {
         iter = document.createNodeIterator(root, NodeFilter.SHOW_ELEMENT, { acceptNode: node => node.tagName == 'BR' }, false);
         node = iter.nextNode();
         while (node) {
-            let previous_in_multi_br = false;
+            let in_multi_br = false;
             let last_in_multi_br = false;
             while (node) {
                 if (node.nextSibling) {
                     const next = node.nextSibling;
                     const next_is_br = next.tagName == 'BR';
                     const next_is_space = next.nodeType == Node.TEXT_NODE && next.nodeValue.trim() == '';
-                    const nnext_is_br = next.nextSibling && next.nextSibling.tagName == 'BR';
-                    const nnext_is_newline = next.nextSibling && next.nextSibling.nodeType == Node.TEXT_NODE && next.nextSibling.nodeValue.trim() != '';
-                    previous_in_multi_br = next_is_br || next_is_space && (nnext_is_br || nnext_is_newline);
-                    if (previous_in_multi_br) {
+                    const next_is_the_end = !next.nextSibling;
+                    const nnext_is_br = next?.nextSibling?.tagName == 'BR';
+                    const nnext_is_newline = next?.nextSibling?.nodeType == Node.TEXT_NODE && next?.nextSibling?.nodeValue.trim() != '';
+                    const nnext_is_newblock = next?.nextSibling?.tagName == 'DIV';
+                    in_multi_br = next_is_br || next_is_the_end || next_is_space && (nnext_is_br || nnext_is_newline || nnext_is_newblock);
+                    if (in_multi_br) {
                         node = iter.nextNode();
                         last_in_multi_br = true;
                         continue;
@@ -1615,13 +1625,25 @@ th.helper-sortby::after {
                 }
                 break;
             }
-            if (!previous_in_multi_br && !last_in_multi_br) {
+            if (!in_multi_br && !last_in_multi_br) {
                 const br = docre('br');
                 br.setAttribute('data-hbr', 'before-single-br');
                 insertElement(br, node);
             }
             node = iter.nextNode();
         }
+
+        // 删掉引用中的自动<br>和引用后可能的第一个自动<br>
+        qSA('div.quote', root).forEach(e => {
+            const brs = qSA('br[data-hbr]', e);
+            for (let br of brs) {
+                br.parentNode.removeChild(br);
+            }
+            const next = e.nextElementSibling;
+            if (next.getAttribute('data-hbr') == 'before-single-br') {
+                next.parentNode.removeChild(next);
+            }
+        });
     }
 
     function removeWrapInNode(root) {
@@ -2040,19 +2062,16 @@ th.helper-sortby::after {
         return progressbar;
     }
 
-    function updateTopProgressbar(progress) {
-        const progressbar = qS('#helper-top-progressbar');
-        if (progressbar) {
-            progressbar.style.width = progress + '%';
-        }
-    }
+    function updateProgressbar(progress, dt, remove_timeout = 1500) {
+        if (progress && dt && dt > 0) {
+            progress.value += dt;
+            progress.bar.style.width = progress.value + '%';
 
-    function removeTopProgressbar(timeout = 1000) {
-        const progressbar = qS('#helper-top-progressbar-container');
-        if (progressbar) {
-            setTimeout(() => {
-                document.body.removeChild(progressbar);
-            }, timeout);
+            if (progress.value >= 100) {
+                setTimeout(() => {
+                    document.body.removeChild(progress.bar.parentNode);
+                }, remove_timeout);
+            }
         }
     }
 
@@ -2861,20 +2880,20 @@ th.helper-sortby::after {
 // TODO 设置用词
 // TODO 测试非当前doc时attach&op的下载
 
-// 问题修复
-// FIXME 补充内容、引用内无需换行
-// FIXME <br></elem>的情况不是single br
-// FIXME text</div>\n<elem>的情况是换行 例子：漫长的这一天
+// 问题修复：下载
 // FIXME op未加载的情况
 // FIXME 参见tg详情
+// FIXME merged save 没有帖子分割线
+
+// 问题修复：页面更新
+// TODO changePageAllCheckboxs
+// TODO updatePageDoc
+// FIXME 下载完后checkbox不会消失
+
+// 问题修复：其它
 // FIXME chrome支持
 // FIXME 更新通知、代表作、合并下载中标题的精华、置顶、关闭标记、分区名
 // TODO 测试自动回复
-// FIXME merged save 没有帖子分割线
-// FIXME getSpaceAuthor
-// FIXME 使用username的空间
-// FIXME 下载完后checkbox不会消失
-// FIXME 修复进度条
 
 // 功能优化：优先
 // TODO 代表作标题链接、省略
@@ -2883,13 +2902,16 @@ th.helper-sortby::after {
 
 // 功能优化
 // TODO 版面浮动名片、好友浮动名片添加代表作、关注、拉黑
-// TODO 进度条优化
+// TODO 进度条优化：saveThread中的getAllPageContent
 // TODO 代表作进度条
 // TODO 黑名单等级
-// TODO 自动切换全帖/选中？
+// TODO 自动切换全帖/选中：显示已选
 // TODO 滚动条悬停显示
 // TODO 设置按钮hover
 // TODO 无代表作时居中
+// TODO 支持firefox
+// TODO 设置hover text
+// TODO 保证弹窗弹出
 
 // 设置优化
 // TODO 换行参数
@@ -2906,20 +2928,21 @@ th.helper-sortby::after {
 // TODO 删除键值
 
 // 代码优化
-// firefox
-// hover text
-// 保证弹窗弹出
-// debug log
-// TODO changePageAllCheckboxs
-// TODO updatePageDoc
+// TODO 添加debug log
 // TODO css classname data清理
-// ?. ?? 运算符
+// TODO 使用?. ?? 运算符替代if判断
+// TODO 使用hasOwnProperty替代in判断
+// FIXME getSpaceAuthor
+// FIXME 使用username的空间
+// TODO 使用nodename替代tagname
+// TODO 避免getAllPageContent中first page重复获取
 
 // 搁置: 不会
 // TODO 上传表情
 // TODO 表情代码
 
 // 搁置: 麻烦
+// TODO 更好的自动换行
 // FIXME 置顶重复
 // FIXME 历史消息重复
 // FIXME 手动输入超标page, isFirstPage会判断出错（等其它非标URL的情况）
