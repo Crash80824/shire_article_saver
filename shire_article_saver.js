@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.4.3
+// @version      0.10.4.4
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -118,6 +118,7 @@
     // ========================================================================================================
     const decimalCeil = (num, precision = 4) => Math.ceil(num * Math.pow(10, precision)) / Math.pow(10, precision);
     const commonPrefix = ((str1, str2) => {
+        [str1, str2] = [str1, str2].map(str => str.replaceAll(/[\s\n\r]/g, '').replaceAll(/[（《\[\{\(\<]/g, '【').replaceAll(/[）》\]\}\)\>]/g, '】'));
         return str1 === '' ? str2 : (str2 === '' ? str1 : (() => {
             let i = 0;
             while (i < str1.length && i < str2.length && str1[i] === str2[i]) i++;
@@ -1232,7 +1233,6 @@ th.helper-sortby::after {
             content_list = content_list.sort((a, b) => a.tid - b.tid);
             const content = content_list.map(e => e.text).join('\n\n=================\n\n');
             let filename = content_list.reduce((acc, cur) => commonPrefix(acc, cur.title), content_list[0].title);
-            filename = filename.replace(/[ \t\r\n(（【［“‘]/g, '')
             filename += '（合集）';
             await downloadFromURL({
                 url: URL.createObjectURL(new Blob([content], { type: 'text/plain' })),
@@ -2913,21 +2913,16 @@ th.helper-sortby::after {
 // FIXME 恢复自动回复内容
 // FIXME 隐藏调试tab
 // TODO 设置用词
-// TODO 测试非当前doc时attach&op的下载
 
 // 问题修复：下载
-// FIXME op未加载的情况
 // FIXME 参见tg详情
 
 // 问题修复：其它
 // FIXME chrome支持
-// FIXME 更新通知、代表作、合并下载中标题的精华、置顶、关闭标记、分区名
-// TODO 测试自动回复
-
-// 功能优化：优先
-// TODO 保存文本链接处理
 
 // 功能优化
+// TODO 使用倒序浏览替代large_page_num
+// TODO 保存文本链接处理
 // TODO 代表作标题链接、省略
 // TODO 版面浮动名片、好友浮动名片添加代表作、关注、拉黑
 // TODO 进度条优化：saveThread中的getAllPageContent
@@ -2940,6 +2935,9 @@ th.helper-sortby::after {
 // TODO 支持firefox
 // TODO 设置hover text
 // TODO 保证弹窗弹出
+// TODO 保存的文件名是否要带小分区名
+// TODO 考虑更新通知、代表作中标题的精华、置顶、关闭标记
+// TODO 考虑op未加载的情况
 
 // 设置优化
 // TODO 换行参数
