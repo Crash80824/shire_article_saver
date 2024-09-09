@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0
+// @version      1.0.0.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -90,7 +90,7 @@
         enable_postfile_download: true,
         enable_attach_download: true,
         enable_op_download: true,
-        files_pack_mode: 'no',
+        files_pack_mode: 'all',
         default_merge_mode: 'main',
         // 自动回复设置
         enable_auto_reply: true,
