@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.0.1
+// @version      1.0.0.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1753,7 +1753,6 @@ th.helper-sortby::after {
             all_checked = all_checked && checkbox.checked;
 
             const user_card = qS('tbody > tr:nth-child(1) > td.pls > div', post)
-            user_card.appendChild(label);
 
             const profile_card = qS('[id^=userinfo] > div.i.y ', post);
             insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, name), qS('div:first-child', profile_card));
@@ -1761,6 +1760,7 @@ th.helper-sortby::after {
             const post_follow_btn = createFollowButton({ uid, name, tid, title: thread_title });
             post_follow_btn.classList.add('o');
             user_card.appendChild(post_follow_btn);
+            user_card.appendChild(label);
 
             const profile_icon = qS('div.imicn', profile_card);
             profile_icon.appendChild(createFollowButton({ uid, name, tid: 0 }));
@@ -2026,7 +2026,7 @@ th.helper-sortby::after {
         }
 
         qSA('.helper-b-button').forEach(e => {
-            if (!hs.blacklist.some(e => e.uid == e.getAttribute('data-hfb-uid'))) {
+            if (!hs.blacklist.some(p => p.uid == e.getAttribute('data-hfb-uid'))) {
                 e.classList.remove('helper-b-button');
                 e.classList.add('helper-f-button');
                 e.addEventListener('click', async () => {
@@ -2390,6 +2390,7 @@ th.helper-sortby::after {
                 const keyword = input.value.trim().toLowerCase();
                 if (keyword.length > 0 && !hs.block_keywords.includes(keyword)) {
                     hs.block_keywords.push(keyword);
+                    GM.setValue('helper_setting', hs);
                     div.removeChild(tag_container);
                     tag_container = createHeperTagsContainer(hs.block_keywords, () => GM.setValue('helper_setting', hs));
                     div.appendChild(tag_container);
