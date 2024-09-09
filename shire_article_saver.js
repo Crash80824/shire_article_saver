@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.4.2
+// @version      0.10.4.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1256,7 +1256,8 @@ th.helper-sortby::after {
             createZipAndDownloadFromURLs(filename, content_list, progress, 15);
         }
 
-        GM.deleteValue(uid + '_checked_threads');
+        await GM.deleteValue(uid + '_checked_threads');
+        updatePageDoc();
     }
 
     // ========================================================================================================
@@ -1378,20 +1379,6 @@ th.helper-sortby::after {
         updateGMList(value, checked_list);
     }
 
-    function changePageAllCheckboxs() {
-        const tid = document.URL.parseURL().tid;
-        const checkbox_page = qS('#page_checked_all');
-        const checked_for_all = checkbox_page.checked;
-        const checkbox_posts = qSA('input[id^="post_check_"]');
-        let checked_list = GM_getValue(`${tid}_checked_posts`, []);
-        for (let checkbox of checkbox_posts) {
-            checkbox.checked = checked_for_all;
-            const id = checkbox.id.split('_check_')[1];
-            updateListElements(checked_list, id, checked_for_all);
-        }
-        updateGMList(`${tid}_checked_posts`, checked_list);
-    }
-
     // 关注某个用户在某个Thread下的回复
     // 若tid==0，则关注用户的所有主题
     // 若tid==-1, 则关注用户的所有回复
@@ -1417,17 +1404,6 @@ th.helper-sortby::after {
         const followed_users = GM_getValue('followed_users', []);
         updateListElements(followed_users, { uid, name }, false, (a, b) => a.uid == b.uid);
         updateGMList('followed_users', followed_users);
-    }
-
-    function setFollowButtonStatus() {
-        for (let { uid } of hs.blacklist) {
-            qSA(`.helper-f-button[data-hfb-uid='${uid}']`).forEach(e => {
-                e.removeAttribute('data-hfb-followed');
-                e.classList.remove('helper-f-button');
-                e.classList.add('helper-b-button');
-                e.replaceWith(e.cloneNode(true));
-            });
-        }
     }
 
     function autoReply(timeout = 2000) {
@@ -1710,7 +1686,6 @@ th.helper-sortby::after {
 
     async function modifyPostInPage() {
         const tid = document.URL.parseURL().tid;
-        const checked_posts = await GM.getValue(tid + '_checked_posts', []);
         const posts_in_page = getPostsInPage();
         const thread_title = qS('#thread_subject').textContent;
         let all_checked = true;
@@ -1726,7 +1701,6 @@ th.helper-sortby::after {
             checkbox.id = 'post_check_' + pid;
             checkbox.className = 'helper-checkbox';
             checkbox.type = 'checkbox';
-            checkbox.checked = checked_posts.includes(pid);
             checkbox.addEventListener('change', () => { recordCheckbox(`${tid}_checked_posts`, checkbox.id, checkbox.checked) });// 每个Thread设置一个数组，存入被选中的Post的ID
             label.appendChild(checkbox);
 
@@ -1751,10 +1725,10 @@ th.helper-sortby::after {
             profile_icon.appendChild(createFollowButton({ uid, name, tid: 0 }));
             insertInteractiveLink(' 屏蔽用户', () => {
                 blockUser(uid, name);
-                setFollowButtonStatus();
+                updatePageDoc();
             }, profile_icon);
 
-            setFollowButtonStatus();
+            updatePageDoc();
         }
 
         const label = docre('label');
@@ -1768,7 +1742,10 @@ th.helper-sortby::after {
         checkbox.className = 'helper-checkbox';
         checkbox.style.verticalAlign = 'middle';
         checkbox.checked = all_checked;
-        checkbox.addEventListener('change', () => { changePageAllCheckboxs() });
+        checkbox.addEventListener('change', () => {
+            qSA('[id^=post_check_]').forEach(e => e.checked = checkbox.checked);
+            label_text.textContent = checkbox.checked ? '清空全选' : '全选本页';
+        });
         label.appendChild(checkbox);
     }
 
@@ -1779,7 +1756,6 @@ th.helper-sortby::after {
         }
 
         const uid = document.URL.parseURL().uid;
-        const checked_threads = await GM.getValue(uid + '_checked_threads', []);
         const thread_in_page = qSA('tr:not(.th)', thread_table);
 
         for (let thread of thread_in_page) {
@@ -1789,7 +1765,6 @@ th.helper-sortby::after {
             checkbox.id = 'thread_check_' + tid;
             checkbox.type = 'checkbox';
             checkbox.className = 'pc';
-            checkbox.checked = checked_threads.includes(tid);
 
             insertElement(checkbox, link);
 
@@ -1805,8 +1780,6 @@ th.helper-sortby::after {
     async function modifyPostPage() {
         const location_params = document.URL.parseURL();
         const the_only_author = theOnlyAuthorInfo();
-
-        modifyPostInPage();
 
         const saveFunc = (type = 'main') => () => {
             saveThread(type).then(() => {
@@ -1828,6 +1801,8 @@ th.helper-sortby::after {
         }
 
         insertInteractiveLink('保存选中  ', saveFunc('checked'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+
+        modifyPostInPage();
     }
 
     async function modifySpacePage() {
@@ -1886,7 +1861,7 @@ th.helper-sortby::after {
             const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space' };
             insertLink(`${name}的主题`, URL_params, toptb);
             toptb.appendChild(createFollowButton({ uid, name, tid: type == 'reply' ? -1 : 0 }));
-            setFollowButtonStatus();
+            updatePageDoc();
         }
 
         if (mod == 'space' && uid == GM_info.script.author && URL_params.do == 'wall' && loc == 'home') {
@@ -1933,6 +1908,7 @@ th.helper-sortby::after {
                     if (init) {
                         modifySpacePage();
                     }
+                    updateSpacePage();
                 }
             }
         }
@@ -1941,9 +1917,8 @@ th.helper-sortby::after {
     // ========================================================================================================
     // 更新页面内容
     // ========================================================================================================
-    async function updatePostPages() {
+    function updatePostPages() {
         const posts_in_page = getPostsInPage();
-        const follow_list = GM_getValue('followed_list', []);
         const tid = document.URL.parseURL().tid;
         for (let post of posts_in_page) {
             if (hs.enable_auto_wrap) {
@@ -1955,6 +1930,11 @@ th.helper-sortby::after {
                 removeWrapInNode(post_content);
             }
         }
+
+        const checked_posts = GM_getValue(`${tid}_checked_posts`, []);
+        qSA('[id^=post_check_]').forEach(e => {
+            e.checked = checked_posts.includes(e.id.slice(11));
+        });
     }
 
     function updateForumPage() {
@@ -1973,8 +1953,63 @@ th.helper-sortby::after {
         });
     }
 
+    async function updateSpacePage() {
+        const URL_params = document.URL.parseURL();
+        if (!Boolean(URL_params.type)) {
+            URL_params.type = 'thread';
+        }
+        const { uid, type } = URL_params;
+
+        if (URL_params.do == 'thread') {
+            if (type == 'thread') {
+                const checked_threads = await GM.getValue(uid + '_checked_threads', []);
+                qSA('[id^=thread_check_]').forEach(e => {
+                    e.checked = checked_threads.includes(e.id.slice(13));
+                });
+            }
+        }
+    }
+
     function updatePageDoc() {
-        modifyPageDoc(false);
+        modifyPageDoc(false); // 分类讨论执行
+
+        // 对于所有的页面都执行
+        for (let { uid } of hs.blacklist) {
+            qSA(`.helper-f-button[data-hfb-uid='${uid}']`).forEach(e => {
+                e.removeAttribute('data-hfb-followed');
+                e.classList.remove('helper-f-button');
+                e.classList.add('helper-b-button');
+                e.replaceWith(e.cloneNode(true));
+            });
+        }
+
+        qSA('.helper-b-button').forEach(e => {
+            if (!hs.blacklist.some(e => e.uid == e.getAttribute('data-hfb-uid'))) {
+                e.classList.remove('helper-b-button');
+                e.classList.add('helper-f-button');
+                e.addEventListener('click', async () => {
+                    const followed_num = GM_getValue('followed_num', 0);
+                    if (followed_num >= magic_num) {
+                        alert('关注数已达上限，请清理关注列表.');
+                        return;
+                    }
+                    const follow_status = GM_getValue(info.uid + '_followed_threads', []);
+                    const followed = follow_status.some(e => e.tid == info.tid);
+                    qSA(`.${follow_type}[data-hfb-uid='${info.uid}']`).forEach(e => {
+                        if (followed) {
+                            e.removeAttribute('data-hfb-followed');
+                        }
+                        else {
+                            e.setAttribute('data-hfb-followed', '')
+                        }
+                    });
+                    recordFollow(info, !followed);
+                    if (info.tid == -1 && !followed) { // 特关同时也关注主题
+                        recordFollow({ uid: info.uid, name: info.name, tid: 0, title: '所有主题' }, true);
+                    }
+                });
+            }
+        });
     }
 
     // ========================================================================================================
@@ -2884,22 +2919,16 @@ th.helper-sortby::after {
 // FIXME op未加载的情况
 // FIXME 参见tg详情
 
-// 问题修复：页面更新
-// TODO changePageAllCheckboxs
-// TODO updatePageDoc
-// FIXME 下载完后checkbox不会消失
-
 // 问题修复：其它
 // FIXME chrome支持
 // FIXME 更新通知、代表作、合并下载中标题的精华、置顶、关闭标记、分区名
 // TODO 测试自动回复
 
 // 功能优化：优先
-// TODO 代表作标题链接、省略
 // TODO 保存文本链接处理
-// TODO 保存选中时无选中
 
 // 功能优化
+// TODO 代表作标题链接、省略
 // TODO 版面浮动名片、好友浮动名片添加代表作、关注、拉黑
 // TODO 进度条优化：saveThread中的getAllPageContent
 // TODO 代表作进度条
@@ -2919,8 +2948,8 @@ th.helper-sortby::after {
 // TODO 显示按钮和订阅更新分开设置
 // TODO 代表作数量
 // TODO 历史消息上限
-// TODO 插入设置
-// TODO 恢复默认
+// TODO 插入TAB设置
+// TODO 恢复默认设置
 
 // 调试模式
 // TODO 导出关注
@@ -2935,6 +2964,7 @@ th.helper-sortby::after {
 // FIXME 使用username的空间
 // TODO 使用nodename替代tagname
 // TODO 避免getAllPageContent中first page重复获取
+// TODO 清除updatePageDoc和createFollowBtn中的重复代码
 
 // 搁置: 不会
 // TODO 上传表情
