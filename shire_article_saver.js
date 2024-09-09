@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      0.10.5
+// @version      1.0
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -93,8 +93,8 @@
         files_pack_mode: 'no',
         default_merge_mode: 'main',
         // 自动回复设置
-        enable_auto_reply: false,
-        auto_reply_message: '',
+        enable_auto_reply: true,
+        auto_reply_message: '感谢分享！',
         // 自动换行设置
         enable_auto_wrap: false,
         min_wrap_length: 100,
@@ -1879,6 +1879,7 @@ th.helper-sortby::after {
                     });
                     save_link.replaceWith(new_save_link);
                 });
+                save_select.style.display = 'none';
 
                 pos.appendChild(save_select);
             }
@@ -2434,7 +2435,7 @@ th.helper-sortby::after {
                     { title: '自动换行', type: 'switch', args: ['enable_auto_wrap', updatePageDoc] },
                     // 开启屏蔽词
                     {
-                        title: '关键词屏蔽', type: 'switch', args: ['enable_block_keyword', () => {
+                        title: '标题关键词屏蔽', type: 'switch', args: ['enable_block_keyword', () => {
                             updatePageDoc();
                             setHidden(qS('#htb-block'), !hs.enable_block_keyword);
                         }
@@ -2452,7 +2453,7 @@ th.helper-sortby::after {
                 components = [
                     // 选择下载内容
                     {
-                        title: '主题保存内容', type: 'multicheck', args: [[
+                        title: '保存帖子内容', type: 'multicheck', args: [[
                             { attr: 'enable_text_download', text: '文本' },
                             { attr: 'enable_postfile_download', text: '帖内资源' },
                             { attr: 'enable_attach_download', text: '附件' },
@@ -2460,21 +2461,22 @@ th.helper-sortby::after {
                     },
                     // 选择文件打包模式
                     {
-                        title: '归档保存方式', type: 'select', args: [
+                        title: '帖内打包保存方式', type: 'select', args: [
                             'files_pack_mode',
                             ['no', 'single', 'all'],
-                            ['不归档', '分类归档', '全部归档']]
+                            ['不打包', '分类打包', '全部打包']]
+                    },
+
+                    // 开启自动回复
+                    {
+                        title: '保存后自动回复', type: 'switch', args: ['enable_auto_reply']
                     },
                     // 选择默认合并下载模式
                     {
-                        title: '默认合并保存方式', type: 'select', args: [
+                        title: '空间合并保存方式', type: 'select', args: [
                             'default_merge_mode',
                             ['main', 'author', 'all'],
                             ['主楼（合并）', '作者（打包）', '全帖（打包）']]
-                    },
-                    // 开启自动回复
-                    {
-                        title: '自动回复', type: 'switch', args: ['enable_auto_reply']
                     }
                 ];
                 break;
@@ -2551,7 +2553,7 @@ th.helper-sortby::after {
             { id: 'history', name: '历史提醒', func: createHistoryNotificationTab, 'hidden': !hs.enable_history },
             { id: 'block', name: '标题屏蔽词', func: createBlockKeywordTab, 'hidden': !hs.enable_block_keyword },
             { id: 'blacklist', name: '黑名单', func: createBlacklistTab, 'hidden': !hs.enable_blacklist },
-            { id: 'debug', name: '调试', func: createDebugTab }];
+            { id: 'debug', name: '调试', func: createDebugTab, hidden: !hs.enable_debug_mode }];
 
         const show_tab = content => {
             tab_content_container.innerHTML = '';
@@ -2951,16 +2953,6 @@ th.helper-sortby::after {
 
 })();
 
-// 发布前检查
-// FIXME 恢复自动回复内容
-// FIXME 隐藏调试tab
-// TODO 设置用词
-
-// 问题修复：下载
-// FIXME 参见tg详情
-
-// 问题修复：其它
-// FIXME chrome支持
 
 // 功能优化
 // TODO 使用倒序浏览替代large_page_num
