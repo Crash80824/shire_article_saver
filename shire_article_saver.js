@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    http://tampermonkey.net/
-// @version      0.10.4.1
+// @version      0.10.4.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1230,7 +1230,7 @@ th.helper-sortby::after {
             const promises = checked_threads.map(tid => getAllPageContent(tid, uid, 'main', progress, dt));
             let content_list = await Promise.all(promises);
             content_list = content_list.sort((a, b) => a.tid - b.tid);
-            const content = content_list.map(e => e.text).join('\n');
+            const content = content_list.map(e => e.text).join('\n\n=================\n\n');
             let filename = content_list.reduce((acc, cur) => commonPrefix(acc, cur.title), content_list[0].title);
             filename = filename.replace(/[ \t\r\n(（【［“‘]/g, '')
             filename += '（合集）';
@@ -2883,7 +2883,6 @@ th.helper-sortby::after {
 // 问题修复：下载
 // FIXME op未加载的情况
 // FIXME 参见tg详情
-// FIXME merged save 没有帖子分割线
 
 // 问题修复：页面更新
 // TODO changePageAllCheckboxs
