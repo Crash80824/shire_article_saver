@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
-// @namespace    http://tampermonkey.net/
-// @version      0.10.4.4
+// @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
+// @version      0.10.5
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -57,7 +57,7 @@
     const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/125.0.0.0';
     const large_page_num = 1024;
     const magic_num = Math.sqrt(large_page_num);
-    const extensionMap = {
+    const MIME_type_map = {
         'image/jpeg': 'jpg',
         'image/bmp': 'bmp',
         'image/png': 'png',
@@ -87,6 +87,7 @@
         max_history: 100,
         // 下载设置
         enable_text_download: true,
+        enable_postfile_download: true,
         enable_attach_download: true,
         enable_op_download: true,
         files_pack_mode: 'no',
@@ -127,7 +128,7 @@
     });
     const startWithChinese = str => /^[\p{Script=Han}]/u.test(str);
     const extractFileAndExt = str => {
-        const exts = Array.from(Object.values(extensionMap)).join('|');
+        const exts = Array.from(Object.values(MIME_type_map)).join('|');
         const regex = new RegExp(`([^\\/]+)\\.(${exts})$`, 'i');
         const match = str.match(regex);
         return match ? [match[1], match[2]] : [str, ''];
@@ -887,24 +888,53 @@ th.helper-sortby::after {
             text += formatPostNodeText(child);
         }
 
-        let image_list = qS('#imagelist_' + pid, post); // 多图
-        if (!image_list) {
-            image_list = qS('.pattl', post); // 单图
-        }
-        let attach = [];
-        if (image_list) {
-            image_list = qSA('img', image_list);
-            for (let i = 0; i < image_list.length; i++) {
-                const img = image_list[i];
-                const img_url = img.getAttribute('zoomfile');
-                let img_title = img.title
-                if (!startWithChinese(img_title)) {
-                    img_title = '';
-                }
-                attach.push({ url: img_url, title: img_title });
+        let post_file = [];
+        qSA('ignore_js_op', tf).forEach(node => {
+            for (let a of qSA('a', node)) {
+                if (a.href.includes('mod=attachment&aid=')) {
+                    let title, ext;
+                    if (a.innerText == '下载附件') {
+                        [title, ext] = extractFileAndExt(qS('strong', node).innerText);
+                    }
+                    else {
+                        [title, ext] = extractFileAndExt(a.innerText);
+                    }
 
+                    if (!startWithChinese(title)) {
+                        title = '';
+                    }
+
+                    post_file.push({ url: a.href, title, ext });
+                    break;
+                }
             }
-        }
+        });
+
+        let attach = [];
+        qSA('a[id^=aid]', post).forEach(a => {
+            let [title, ext] = extractFileAndExt(a.innerText);
+            if (!startWithChinese(title)) {
+                title = '';
+            }
+            attach.push({ url: a.href, title, ext });
+        });
+
+        // let image_list = qS('#imagelist_' + pid, post) // 多图
+        // if (image_list) {
+        //     image_list = qS('div.pattl', post); // 单图
+        // }
+        // if (image_list) {
+        //     image_list = qSA('img', image_list);
+        //     for (let i = 0; i < image_list.length; i++) {
+        //         const img = image_list[i];
+        //         const img_url = img.getAttribute('zoomfile');
+        //         let img_title = img.title
+        //         if (!startWithChinese(img_title)) {
+        //             img_title = '';
+        //         }
+        //         attach.push({ url: img_url, title: img_title });
+        //     }
+        // }
 
         let op_body = qS('[id^="op-"][id$="-body"]', post);
         let op = [];
@@ -912,12 +942,13 @@ th.helper-sortby::after {
             const url_list = qSA('a', op_body);
             if (url_list.length > 0) {
                 for (let url of url_list) {
-                    op.push({ url: url.href, title: url.textContent });
+                    let [title, ext] = extractFileAndExt(url.innerText);
+                    op.push({ url: url.href, title, ext });
                 }
             }
         }
 
-        return { text, attach, op };
+        return { text, post_file, attach, op };
     }
 
     async function getPageContent(page_doc, type = 'main') { // type: main, checked, all
@@ -935,6 +966,7 @@ th.helper-sortby::after {
         const posts_in_page = getPostsInPage(page_doc);
 
         let text = '';
+        let post_file = [];
         let attach = [];
         let op = [];
         for (let post of posts_in_page) {
@@ -947,6 +979,7 @@ th.helper-sortby::after {
             const post_info = getPostInfo(post);
             const post_content = getPostContent(post_info.post_id, page_doc);
 
+            post_file.push(...post_content.post_file);
             attach.push(...post_content.attach);
             op.push(...post_content.op);
 
@@ -964,7 +997,7 @@ th.helper-sortby::after {
                 break;
             }
         }
-        return { tid, title, page_id, text, attach, op };
+        return { tid, title, page_id, text, post_file, attach, op };
     }
 
     async function getAllPageContent(tid, authorid = '', type = 'all', progress = null, dt = null) { // type: main, all, checked
@@ -998,15 +1031,17 @@ th.helper-sortby::after {
         content_list.sort((a, b) => a.page_id - b.page_id);
 
         let text = '';
+        let post_file = [];
         let attach = [];
         let op = [];
         content_list.forEach(content => {
             text += content.text + '\n';
+            post_file.push(...content.post_file);
             attach.push(...content.attach);
             op.push(...content.op);
         });
 
-        return { tid, title, text, attach, op };
+        return { tid, title, text, post_file, attach, op };
     }
 
     // ========================================================================================================
@@ -1016,9 +1051,7 @@ th.helper-sortby::after {
         // 直接下载或者保存到zip
         // progress={value} 当前进度条百分比
         // dt 完成后增加的进度条百分比
-        const url = target.url;
-        let title = target.title;
-        const is_blob = target?.is_blob || false;
+        let { url, title, ext, is_blob } = target;
 
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -1026,20 +1059,17 @@ th.helper-sortby::after {
                 url: url,
                 responseType: 'blob',
                 onload: response => {
-                    const content_type = response.responseHeaders.match(/Content-Type: (.+)/i);
-                    let ext = 'unknown';
-                    if (content_type && content_type[1]) {
-                        ext = extensionMap[content_type[1]] || 'unknown';
+                    if (!ext) {
+                        const content_type = response.responseHeaders.match(/Content-Type: (.+)/i);
+                        if (content_type && content_type[1]) {
+                            ext = MIME_type_map[content_type[1]] || '';
+                        }
                     }
 
-                    if (ext == 'unknown') {
-                        [title, ext] = extractFileAndExt(title);
-                    }
-
-                    if (ext != 'unknown') {
+                    if (ext != '') {
                         const blob = response.response;
                         if (zip !== null && response.status == 200) {
-                            zip.file(`${title}.${ext}`, blob);
+                            zip.file(`${title}.${ext}`, blob, { binary: true });
                             updateProgressbar(progress, dt);
                         }
                         else {
@@ -1094,7 +1124,6 @@ th.helper-sortby::after {
 
         const zip = new JSZip();
         await insertZip(target_list, zip, progress, decimalCeil(0.75 * dt));
-        console.log(zip_name);
         return await new Promise(async (resolve, reject) => {
             const content = await zip.generateAsync({ type: 'blob' });
             const a = docre('a');
@@ -1107,7 +1136,7 @@ th.helper-sortby::after {
         });
     }
 
-    async function saveFile(filename, text, attach = [], op = []) {
+    async function saveFile(filename, text, post_file = [], attach = [], op = []) {
         let download_list = []
 
         if (hs.enable_text_download) {
@@ -1116,9 +1145,22 @@ th.helper-sortby::after {
             download_list.push({ list: [{ url, title: filename, is_blob: true }], name: '正文' });
         }
 
+        if (hs.enable_postfile_download) {
+            post_file.forEach((e, i) => {
+                if (!e.url.startsWith(location.origin)) {
+                    e.url = location.origin + '/main/' + e.url;
+                }
+                e.title = e.title || `${i + 1}`;
+                e.title = `${filename}_${e.title}`;
+            });
+            download_list.push({ list: post_file, name: '帖内资源' });
+        }
+
         if (hs.enable_attach_download) {
             attach.forEach((e, i) => {
-                e.url = location.origin + '/main/' + e.url;
+                if (!e.url.startsWith(location.origin)) {
+                    e.url = location.origin + '/main/' + e.url;
+                }
                 e.title = e.title || `${i + 1}`;
                 e.title = `${filename}_附${e.title}`;
             });
@@ -1130,7 +1172,6 @@ th.helper-sortby::after {
         }
 
         download_list = download_list.filter(e => e.list.length > 0);
-
         if (download_list.length == 0) {
             alert('没有需要保存的内容, 请检查设置.');
             return;
@@ -1173,7 +1214,7 @@ th.helper-sortby::after {
             let text = file_info;
             let content = await getPageContent(document, 'main');
             text += content.text;
-            await saveFile(title_name, text, content.attach, content.op);
+            await saveFile(title_name, text, content.post_file, content.attach, content.op);
         }
         else {
             if (type == 'checked') {
@@ -1207,7 +1248,7 @@ th.helper-sortby::after {
             filename += '（' + filename_suffix + '）';
 
             const content_list = await getAllPageContent(thread_id, the_only_author ? the_only_author.uid : '', type);
-            await saveFile(filename, text + content_list.text, content_list.attach, content_list.op);
+            await saveFile(filename, text + content_list.text, content_list.post_file, content_list.attach, content_list.op);
             if (type == 'checked') {
                 GM.deleteValue(thread_id + '_checked_posts');
             }
@@ -2413,6 +2454,7 @@ th.helper-sortby::after {
                     {
                         title: '主题保存内容', type: 'multicheck', args: [[
                             { attr: 'enable_text_download', text: '文本' },
+                            { attr: 'enable_postfile_download', text: '帖内资源' },
                             { attr: 'enable_attach_download', text: '附件' },
                             { attr: 'enable_op_download', text: '原创资源' }]]
                     },
@@ -2948,6 +2990,7 @@ th.helper-sortby::after {
 // TODO 历史消息上限
 // TODO 插入TAB设置
 // TODO 恢复默认设置
+// TODO 是否重命名附件
 
 // 调试模式
 // TODO 导出关注
