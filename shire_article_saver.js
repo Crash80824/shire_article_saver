@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.0.2
+// @version      1.0.0.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -1019,7 +1019,8 @@ th.helper-sortby::after {
         const ddt = decimalCeil(dt / page_num);
         updateProgressbar(progress, ddt);
 
-        const promises = [getPageContent(first_page, type)].concat(Array.from({ length: page_num - 1 }, async (_, i) => {
+        const promises = [getPageContent(first_page, type)];
+        promises.push(...Array.from({ length: page_num - 1 }, async (_, i) => {
             const page = await getPageDocInDomain({ loc: 'forum', mod: 'viewthread', tid, page: i + 2, authorid });
             updateProgressbar(progress, 0.8 * ddt);
             const content = await getPageContent(page, type);
@@ -2705,11 +2706,10 @@ th.helper-sortby::after {
                     }));
                 }
             }
-
             if (hs.enable_history) {
                 await Promise.all(promises);
                 const old_notification_messages = GM_getValue('notification_messages', []);
-                notification_messages = notification_messages.concat(old_notification_messages);
+                notification_messages.push(...old_notification_messages);
                 updateGMList('notification_messages', notification_messages);
             }
         }
