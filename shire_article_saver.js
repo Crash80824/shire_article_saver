@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.0.3
+// @version      1.0.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -139,11 +139,11 @@
             { info: '年前', dt: 365 * 24 * 60 * 60 * 1000 },
             { info: '个月前', dt: 30 * 24 * 60 * 60 * 1000 },
             { info: '天前', dt: 24 * 60 * 60 * 1000 },
-            { info: '小时前', dt: 60 * 60 * 1000 },
-            { info: '分钟前', dt: 60 * 1000, bound: 5 * 60 * 1000 }
+            // { info: '小时前', dt: 60 * 60 * 1000 },
+            // { info: '分钟前', dt: 60 * 1000, bound: 5 * 60 * 1000 }
         ];
-        const unit = units.find(({ dt, bound }) => diff >= (bound !== undefined ? bound : dt));
-        return unit ? `${Math.floor(diff / unit.dt)}${unit.info}` : '刚刚';
+        const unit = units.find(({ dt, bound }) => diff >= bound ?? dt); // 如果有bound则以bound为界限，否则以dt为界限
+        return unit ? `${Math.floor(diff / unit.dt)}${unit.info}` : '今天内';
     }
 
     const checkVariableDefined = (variable_name, timeout = 15000, time_interval = 100) => new Promise((resolve, reject) => {
@@ -2815,7 +2815,7 @@ th.helper-sortby::after {
             footnote.className = 'helper-footnote';
             const update_time_ago = timeAgo(masterpiece_info.update_time);
             footnote.textContent = `缓存时间：${update_time_ago}`;
-            if (update_time_ago != '刚刚') {
+            if (update_time_ago != '今天内' || hs.enable_debug_mode) {
                 footnote.textContent += ' | ';
                 const reload_link = insertInteractiveLink('立即刷新', async () => {
                     content_container.appendChild(createLoadingOverlay());
