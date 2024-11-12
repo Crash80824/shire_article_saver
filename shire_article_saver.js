@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.1
+// @version      1.0.2
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -103,7 +103,7 @@
         wrap_dot: '.。？?!！',
         wrap_comma: ',，、;；',
         // 代表作设置
-        data_cache_time: 168 * 3600 * 1000,
+        data_cache_time: 168 * 3600 * 1000, // 7天
         masterpiece_num: 10,
         default_masterpiece_sort: 'view',
         // 屏蔽词设置
@@ -679,8 +679,8 @@ th.helper-sortby::after {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .helper-tag-container {
@@ -721,7 +721,7 @@ th.helper-sortby::after {
   top: 0;
   width: 100%;
   background-color: #eee;
-  z-index: 999;
+  z-index: 3000;
 }
 
 #helper-top-progressbar {
@@ -2802,10 +2802,16 @@ th.helper-sortby::after {
         const content_container = qS('#helper-content-container', popup);
 
         let masterpiece_info = GM_getValue(uid + '_masterpiece', { update_time: 0, max_view_threads: [], max_reply_threads: [] });
-        if (Date.now() - masterpiece_info.update_time > hs.data_cache_time) {
+        const loadContent = async () => {
             content_container.appendChild(createLoadingOverlay());
-            masterpiece_info = await updateMasterpiece(uid);
+            const top_progressbar = createTopProgressbar();
+            let progress = { value: 0, bar: top_progressbar };
+            masterpiece_info = await updateMasterpiece(uid, progress);
             content_container.innerHTML = '';
+        };
+
+        if (Date.now() - masterpiece_info.update_time > hs.data_cache_time) {
+            await loadContent();
         }
         content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
 
@@ -2818,9 +2824,7 @@ th.helper-sortby::after {
             if (update_time_ago != '今天内' || hs.enable_debug_mode) {
                 footnote.textContent += ' | ';
                 const reload_link = insertInteractiveLink('立即刷新', async () => {
-                    content_container.appendChild(createLoadingOverlay());
-                    masterpiece_info = await updateMasterpiece(uid);
-                    content_container.innerHTML = '';
+                    await loadContent();
                     content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
                     updateFootnote();
                 }, footnote);
@@ -2831,7 +2835,7 @@ th.helper-sortby::after {
         updateFootnote();
     }
 
-    async function updateMasterpiece(uid) {
+    async function updateMasterpiece(uid, progress = null) {
         const getUserThreadNum = async (uid) => {
             const URL_params = { loc: 'home', mod: 'space', uid: uid, do: 'profile' };
             const page_doc = await getPageDocInDomain(URL_params);
@@ -2841,6 +2845,9 @@ th.helper-sortby::after {
         };
 
         const max_page = Math.ceil(await getUserThreadNum(uid) / 20);
+        updateProgressbar(progress, 10);
+        const dt = decimalCeil(90 / max_page);
+
         let threads = [];
         let promises = Array.from({ length: max_page }, (v, k) => k + 1).map(page_num => new Promise(async (resolve, reject) => {
             const URL_params = { loc: 'home', mod: 'space', 'uid': uid, do: 'thread', view: 'me', page: page_num, mobile: 2 };
@@ -2854,6 +2861,7 @@ th.helper-sortby::after {
                 const replies = Number(qS('.dm-chat-s-fill', thread).nextSibling.textContent);
                 threads.push({ tid, title: thread_title, views, replies });
             }
+            updateProgressbar(progress, dt);
             resolve();
         }));
         await Promise.all(promises);
