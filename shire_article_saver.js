@@ -240,6 +240,7 @@
 
         #helper-content-container {
             display: flex;
+            flex: 1;
             overflow: hidden;
             background-color: inherit;
         }
@@ -2571,9 +2572,7 @@
     function createHelperPopup() {
         const popup = createPopupWithTitle('湿热助手');
 
-        const content_container = docre('div');
-        content_container.id = 'helper-content-container';
-        popup.appendChild(content_container);
+        const content_container = qS('#helper-content-container', popup);
 
         const tab_btn_container = docre('div');
         tab_btn_container.id = 'helper-tab-btn-container';
@@ -2762,21 +2761,13 @@
         div.style.width = '100%';
         div.style.paddingBottom = '10px';
 
-        let masterpiece_list = [];
-        switch (sortby) {
-            case 'reply':
-                masterpiece_list = masterpiece_info.max_reply_threads;
-                break;
-            case 'view':
-            default:
-                masterpiece_list = masterpiece_info.max_view_threads;
-        }
-
-        if (masterpiece_list.length == 0) {
+        const has_thread = ['view', 'reply'].some(e => masterpiece_info['max_' + e + '_threads'].length > 0);
+        if (!has_thread) {
             div.appendChild(createCenterMessageDiv('暂无作品'));
             return div;
         }
 
+        let masterpiece_list = [];
         const updateTable = sort_by => {
             const table = docre('table');
             table.className = 'helper-popup-table';
