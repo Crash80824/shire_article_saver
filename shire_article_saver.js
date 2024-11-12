@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.4
+// @version      1.0.5
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -2838,8 +2838,8 @@
                 const [thread_cell, view_cell, reply_cell] = [0, 1, 2].map(i => row.insertCell(i));
 
                 const thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: thread.tid };
-                const thread_link = insertLink(thread.title, thread_URL_params, thread_cell);
-                thread_link.innerHTML = (thread.spanHTML ?? '') + thread_link.innerHTML;
+                insertLink(thread.title, thread_URL_params, thread_cell);
+                thread_cell.innerHTML = (thread.spanHTML ?? '') + thread_cell.innerHTML;
                 view_cell.textContent = thread.views;
                 reply_cell.textContent = thread.replies;
             }
@@ -3022,7 +3022,6 @@
 // 功能优化
 // TODO 使用倒序浏览替代large_page_num
 // TODO 保存文本链接处理
-// TODO 代表作标题链接、省略
 // TODO 版面浮动名片、好友浮动名片添加代表作、关注、拉黑
 // TODO 进度条优化：saveThread中的getAllPageContent
 // TODO 黑名单等级
