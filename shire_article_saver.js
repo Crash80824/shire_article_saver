@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.3
+// @version      1.0.4
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -687,6 +687,29 @@
             content: '▼';
         }`);
 
+    // 弹窗表格中复用移动版主题span
+    GM_addStyle(`
+        .helper-popup-table .micon{
+            background-color: #6db1d5;
+            color: white;
+            padding: 1px;
+            margin-right: 3px;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .helper-popup-table .top{
+            background-color: #ff9900;
+        }
+
+        .helper-popup-table .lock{
+            background-color: #ff5656;
+        }
+
+        .helper-popup-table .digest{
+            background-color: #b3cc0d;
+        }`);
+
     // 其它弹窗样式
     GM_addStyle(`
         .helper-hr {
@@ -749,6 +772,8 @@
         div:has(> .helper-setting-container) .helper-setting-container:not(:last-of-type) {
             border-bottom: 1px solid #ccc;
         }`);
+
+
 
     // 其它样式
     GM_addStyle(`
@@ -2813,7 +2838,8 @@
                 const [thread_cell, view_cell, reply_cell] = [0, 1, 2].map(i => row.insertCell(i));
 
                 const thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: thread.tid };
-                insertLink(thread.title, thread_URL_params, thread_cell);
+                const thread_link = insertLink(thread.title, thread_URL_params, thread_cell);
+                thread_link.innerHTML = (thread.spanHTML ?? '') + thread_link.innerHTML;
                 view_cell.textContent = thread.views;
                 reply_cell.textContent = thread.replies;
             }
@@ -3007,7 +3033,6 @@
 // TODO 设置hover text
 // TODO 保证弹窗弹出
 // TODO 保存的文件名是否要带小分区名
-// TODO 考虑更新通知、代表作中标题的精华、置顶、关闭标记
 // TODO 考虑op未加载的情况
 // TODO 使用getThreadPopularity来获取收藏数等信息
 
