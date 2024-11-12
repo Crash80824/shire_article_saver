@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.2.1
+// @version      1.0.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -3003,7 +3003,6 @@
 // TODO 自动切换全帖/选中：显示已选
 // TODO 滚动条悬停显示
 // TODO 设置按钮hover
-// TODO 无代表作时居中
 // TODO 支持firefox
 // TODO 设置hover text
 // TODO 保证弹窗弹出
