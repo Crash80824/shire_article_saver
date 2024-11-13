@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.12
+// @version      1.0.12.1
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/*
@@ -182,8 +182,12 @@
         check();
     });
 
-    const executeIfLoctionMatch = (params, func) => {
-        if (Object.entries(params).every(([k, v]) => Array.isArray(v) ? v.includes(location_params[k]) : v == location_params[k])) {
+    const executeIfLoctionMatch = (func, params) => {
+        const matchFunc = ([k, v]) => {
+            const loc_v = location_params[k] == '' ? undefined : location_params[k];
+            return Array.isArray(v) ? v.includes(loc_v) : v == loc_v
+        };
+        if (Object.entries(params).every(matchFunc)) {
             func();
         }
     };
@@ -2011,9 +2015,9 @@
             pos.appendChild(label);
         };
 
-        executeIfLoctionMatch({ do: 'thread', type: ['thread', undefined] }, addMergedownComponent);
-        executeIfLoctionMatch({ do: 'thread', view: 'me', from: 'space' }, addMasterpieceComponent);
-        executeIfLoctionMatch({ do: 'wall', uid: GM_info.script.author }, addDebugModeComponent);
+        executeIfLoctionMatch(addMergedownComponent, { do: 'thread', type: ['thread', undefined] });
+        executeIfLoctionMatch(addMasterpieceComponent, { do: 'thread', view: 'me', from: 'space' });
+        executeIfLoctionMatch(addDebugModeComponent, { do: 'wall', uid: GM_info.script.author });
     }
 
     function modifyIndexPage() {
@@ -2027,11 +2031,16 @@
     function modifyPageDoc() {
         if (hasReadPermission() && isLogged()) {
 
-            executeIfLoctionMatch({ loc: undefined }, modifyIndexPage);
-            executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, modifyPostPage);
-            executeIfLoctionMatch({ loc: 'home', mod: 'space' }, modifySpacePage);
+            executeIfLoctionMatch(modifyIndexPage, { pathname: '/' },);
+            executeIfLoctionMatch(modifyPostPage, { loc: 'forum', mod: 'viewthread', 'mobile': ['no', undefined] });
+            executeIfLoctionMatch(modifySpacePage, { loc: 'home', mod: 'space', 'mobile': ['no', undefined] });
 
             updatePageDoc();
+
+
+            if (hs.enable_notification) {
+                updateNotificationPopup();
+            }
 
             // if (location_params.loc == 'forum') {
             //     if (location_params.mod == 'viewthread') {
@@ -2147,9 +2156,9 @@
     }
 
     function updatePageDoc() {
-        executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, updatePostsStaus);
-        executeIfLoctionMatch({ loc: 'forum', mod: 'forumdisplay' }, updateForumStaus);
-        executeIfLoctionMatch({ loc: 'home', mod: 'space', do: 'thread', type: ['thread', undefined] }, updateMergedownStaus);
+        executeIfLoctionMatch(updatePostsStaus, { loc: 'forum', mod: 'viewthread', 'mobile': ['no', undefined] });
+        executeIfLoctionMatch(updateForumStaus, { loc: 'forum', mod: 'forumdisplay', 'mobile': ['no', undefined] });
+        executeIfLoctionMatch(updateMergedownStaus, { loc: 'home', mod: 'space', do: 'thread', type: ['thread', undefined], 'mobile': ['no', undefined] });
         updateFollowOrBlockButtonsStatus();
     }
 
@@ -3036,11 +3045,6 @@
     // 主体运行
     // ========================================================================================================
     insertHelperLink();
-
-    if (hs.enable_notification) {
-        updateNotificationPopup();
-    }
-
     modifyPageDoc();
 
 })();
