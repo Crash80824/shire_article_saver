@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.6
+// @version      1.0.7
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -144,7 +144,7 @@
         ];
         const unit = units.find(({ dt, bound }) => diff >= bound ?? dt); // 如果有bound则以bound为界限，否则以dt为界限
         return unit ? `${Math.floor(diff / unit.dt)}${unit.info}` : '今天内';
-    }
+    };
 
     const checkVariableDefined = (variable_name, timeout = 15000, time_interval = 100) => new Promise((resolve, reject) => {
         const startTime = Date.now();
@@ -160,7 +160,13 @@
         }
 
         check();
-    })
+    });
+
+    const executeIfLoctionMatch = (params, func) => {
+        if (Object.entries(params).every(([k, v]) => location_params[k] == v)) {
+            func();
+        }
+    };
 
     // ========================================================================================================
     // GM Value 工具
@@ -1320,7 +1326,7 @@
     }
 
     async function saveMergedThreads(type = 'main') {
-        const uid = document.URL.parseURL().uid;
+        const uid = location_params.uid;
         let checked_threads = GM_getValue(uid + '_checked_threads', []);
 
         if (checked_threads.length == 0) {
@@ -1791,7 +1797,7 @@
     }
 
     async function modifyPostInPage() {
-        const tid = document.URL.parseURL().tid;
+        const tid = location_params.tid;
         const posts_in_page = getPostsInPage();
         const thread_title = qS('#thread_subject').textContent;
         let all_checked = true;
@@ -1861,7 +1867,7 @@
             return;
         }
 
-        const uid = document.URL.parseURL().uid;
+        const uid = location_params.uid;
         const thread_in_page = qSA('tr:not(.th)', thread_table);
 
         for (let thread of thread_in_page) {
@@ -1884,7 +1890,6 @@
     }
 
     async function modifyPostPage() {
-        const location_params = document.URL.parseURL();
         const the_only_author = theOnlyAuthorInfo();
 
         const saveFunc = (type = 'main') => () => {
@@ -1912,13 +1917,12 @@
     }
 
     async function modifySpacePage() {
-        const URL_params = document.URL.parseURL();
-        if (!Boolean(URL_params.type)) {
-            URL_params.type = 'thread';
+        if (!Boolean(location_params.type)) {
+            location_params.type = 'thread';
         }
-        const { uid, type, view, from, mod, loc } = URL_params;
+        const { uid, type, view, from, mod, loc } = location_params;
 
-        if (URL_params.do == 'thread') {
+        if (location_params.do == 'thread') {
             if (type == 'thread') {
                 insertSpaceCheckbox();
 
@@ -1965,13 +1969,13 @@
         const toptb = qS('#toptb > div.z');
         if (toptb) {
             const name = getSpaceAuthor();
-            const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space' };
-            insertLink(`${name}的主题`, URL_params, toptb);
+            const location_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space' };
+            insertLink(`${name}的主题`, location_params, toptb);
             toptb.appendChild(createFollowButton({ uid, name, tid: type == 'reply' ? -1 : 0 }));
             updatePageDoc();
         }
 
-        if (mod == 'space' && uid == GM_info.script.author && URL_params.do == 'wall' && loc == 'home') {
+        if (mod == 'space' && uid == GM_info.script.author && location_params.do == 'wall' && loc == 'home') {
             const pos = qS('#pcd > div > ul');
             const label = docre('label');
             const checkbox = docre('input');
@@ -1985,39 +1989,37 @@
         }
     }
 
-    function modifyPageDoc(init = true) {
+    function modifyPageDoc() {
         if (hasReadPermission() && isLogged()) {
-            if (location_params.loc == 'forum') {
-                if (location_params.mod == 'viewthread') {
-                    if (init) {
-                        modifyPostPage();
-                        // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
-                        // modifyPostOnSubmit('fastpostform', original_smilies_types);
-                    }
-                    updatePostPages();
-                }
-                if (location_params.mod == 'post') {
-                    // insertExtraSmilies('smiliesdiv', 'e_', original_smilies_types, new_smilies);
-                    // modifyBBCode2Html(original_smilies_types);
-                    // modifyPostOnSubmit('postform', original_smilies_types);
-                }
-                if (location_params.mod == 'forumdisplay') {
-                    if (init) {
-                        // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
-                        // modifyPostOnSubmit('fastpostform', original_smilies_types);
-                    }
-                    updateForumPage();
-                }
-            }
 
-            if (location_params.loc == 'home') {
-                if (location_params.mod == 'space') {
-                    if (init) {
-                        modifySpacePage();
-                    }
-                    updateSpacePage();
-                }
-            }
+            executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, modifyPostPage);
+            executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, updatePostPages);
+
+            executeIfLoctionMatch({ loc: 'forum', mod: 'forumdisplay' }, updateForumPage);
+
+            executeIfLoctionMatch({ loc: 'home', mod: 'space' }, modifySpacePage);
+            executeIfLoctionMatch({ loc: 'home', mod: 'space' }, updateSpacePage);
+
+
+            // if (location_params.loc == 'forum') {
+            //     if (location_params.mod == 'viewthread') {
+            //         if (init) {
+            //             insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
+            //             modifyPostOnSubmit('fastpostform', original_smilies_types);
+            //         }
+            //     }
+            //     if (location_params.mod == 'post') {
+            //         insertExtraSmilies('smiliesdiv', 'e_', original_smilies_types, new_smilies);
+            //         modifyBBCode2Html(original_smilies_types);
+            //         modifyPostOnSubmit('postform', original_smilies_types);
+            //     }
+            //     if (location_params.mod == 'forumdisplay') {
+            //         if (init) {
+            //             insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
+            //             modifyPostOnSubmit('fastpostform', original_smilies_types);
+            //         }
+            //     }
+            // }
         }
     }
 
@@ -2026,7 +2028,9 @@
     // ========================================================================================================
     function updatePostPages() {
         const posts_in_page = getPostsInPage();
-        const tid = document.URL.parseURL().tid;
+        const tid = location_params.tid;
+
+        // 更新自动换行
         for (let post of posts_in_page) {
             if (hs.enable_auto_wrap) {
                 const post_content = qS('[id^=postmessage]', post);
@@ -2038,6 +2042,7 @@
             }
         }
 
+        // 更新“保存本层”复选框
         const checked_posts = GM_getValue(`${tid}_checked_posts`, []);
         qSA('[id^=post_check_]').forEach(e => {
             e.checked = checked_posts.includes(e.id.slice(11));
@@ -2048,9 +2053,11 @@
         qSA('[id^=normalthread]').forEach(thread => {
             const title = qS('a.s.xst', thread).innerText.trim().toLowerCase();
             const uid = qS('td.by cite a', thread).href.parseURL().uid;
+            // 屏蔽关键词
             if (hs.enable_block_keyword && hs.block_keywords.some(keyword => title.includes(keyword))) {
                 thread.style.display = 'none';
             }
+            // 屏蔽用户
             else if (hs.enable_blacklist && hs.blacklist.some(e => e.uid == uid)) {
                 thread.style.display = 'none';
             }
@@ -2061,13 +2068,13 @@
     }
 
     async function updateSpacePage() {
-        const URL_params = document.URL.parseURL();
-        if (!Boolean(URL_params.type)) {
-            URL_params.type = 'thread';
+        if (!Boolean(location_params.type)) {
+            location_params.type = 'thread';
         }
-        const { uid, type } = URL_params;
+        const { uid, type } = location_params;
 
-        if (URL_params.do == 'thread') {
+        if (location_params.do == 'thread') {
+            // 更新多选下载复选框
             if (type == 'thread') {
                 const checked_threads = await GM.getValue(uid + '_checked_threads', []);
                 qSA('[id^=thread_check_]').forEach(e => {
@@ -2078,9 +2085,10 @@
     }
 
     function updatePageDoc() {
-        modifyPageDoc(false); // 分类讨论执行
+        executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, updatePostPages);
+        executeIfLoctionMatch({ loc: 'forum', mod: 'forumdisplay' }, updateForumPage);
+        executeIfLoctionMatch({ loc: 'home', mod: 'space' }, updateSpacePage);
 
-        // 对于所有的页面都执行
         for (let { uid } of hs.blacklist) {
             qSA(`.helper-f-button[data-hfb-uid='${uid}']`).forEach(e => {
                 e.removeAttribute('data-hfb-followed');
@@ -2621,7 +2629,7 @@
             { id: 'history', name: '历史提醒', func: createHistoryNotificationTab, 'hidden': !hs.enable_history },
             { id: 'block', name: '标题屏蔽词', func: createBlockKeywordTab, 'hidden': !hs.enable_block_keyword },
             { id: 'blacklist', name: '黑名单', func: createBlacklistTab, 'hidden': !hs.enable_blacklist },
-            { id: 'debug', name: '变量查看', func: createDebugTab, hidden: !hs.enable_debug_mode }];
+            { id: 'debug', name: '调试', func: createDebugTab, hidden: !hs.enable_debug_mode }];
 
         const show_tab = content => {
             tab_content_container.innerHTML = '';
@@ -3060,6 +3068,7 @@
 // TODO 使用nodename替代tagname
 // TODO 避免getAllPageContent中first page重复获取
 // TODO 清除updatePageDoc和createFollowBtn中的重复代码
+// TODO 拆解updateNotificationPopup
 
 // 搁置: 麻烦
 // TODO 更好的自动换行
@@ -3069,3 +3078,5 @@
 // TODO 图片不区分楼层
 
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
+
+// TODO location_params\.[a-zA-Z]* = 
