@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.9
+// @version      1.0.10
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/*
@@ -21,6 +21,7 @@
 // @downloadURL https://update.greasyfork.org/scripts/461311/shire%20helper.user.js
 // @updateURL https://update.greasyfork.org/scripts/461311/shire%20helper.meta.js
 // @require https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js
+// @require https://cdnjs.cloudflare.com/ajax/libs/loglevel/1.9.2/loglevel.min.js
 
 // ==/UserScript==
 
@@ -35,11 +36,63 @@
     const docre = tag => document.createElement(tag);
     String.prototype.parseURL = function () {
         let obj = {};
-        this.replace(/([^?=&#]+)=([^?=&#]+)/g, (_, key, value) => { obj[key] = value });
-        this.replace(/#([^?=&#]+)/g, (_, hash) => { obj.hash = hash });
-        this.replace(/(\w+)\.php/, (_, loc) => { obj.loc = loc });
+        this.replace(/([^?=&#]+)=([^?=&#]+)/g, (_, key, value) => obj[key] = value);
+        this.replace(/#([^?=&#]+)/g, (_, hash) => obj.hash = hash);
+        this.replace(/(\w+)\.php/, (_, loc) => obj.loc = loc);
         return obj;
     };
+
+    // ========================================================================================================
+    // 初始化设置
+    // ========================================================================================================
+    const helper_default_setting = {
+        // 消息通知设置
+        enable_notification: true,
+        max_noti_threads: 3,
+        important_fids: ['78'],
+        // 历史记录设置
+        enable_history: true,
+        max_history: 100,
+        // 下载设置
+        enable_text_download: true,
+        enable_postfile_download: true,
+        enable_attach_download: true,
+        enable_op_download: true,
+        files_pack_mode: 'all',
+        default_merge_mode: 'main',
+        // 自动回复设置
+        enable_auto_reply: false,
+        auto_reply_message: '感谢分享！',
+        // 自动换行设置
+        enable_auto_wrap: false,
+        min_wrap_length: 100,
+        typical_wrap_length: 200,
+        max_wrap_length: 300,
+        wrap_dot: '.。？?!！',
+        wrap_comma: ',，、;；',
+        // 代表作设置
+        data_cache_time: 168 * 3600 * 1000, // 7天
+        masterpiece_num: 10,
+        default_masterpiece_sort: 'view',
+        // 屏蔽词设置
+        enable_block_keyword: false,
+        block_keywords: [],
+        // 黑名单设置
+        enable_blacklist: false,
+        blacklist: [],
+    };
+
+    const hs = GM_getValue('helper_setting', {});
+    let default_updated = false;
+    for (let key in helper_default_setting) {
+        if (!(key in hs)) {
+            hs[key] = helper_default_setting[key];
+            default_updated = true;
+        }
+    }
+    if (default_updated) {
+        GM.setValue('helper_setting', hs);
+    }
 
     // ========================================================================================================
     // 判断脚本启用条件
@@ -47,7 +100,8 @@
     const location_params = document.URL.parseURL();
     const is_desktop = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
 
-    if (!is_desktop) {
+    if (Object.entries(location_params).length != 0 && !is_desktop) {
+        log.log('Mobile version detected, shire-helper disabled.');
         return;
     }
 
@@ -75,43 +129,6 @@
         'audio/wave': 'wav',
         'audio/x-wav': 'wav',
         'text/plain': 'txt'
-    };
-
-    const helper_default_setting = {
-        // 消息通知设置
-        enable_notification: true,
-        max_noti_threads: 3,
-        important_fids: ['78'],
-        // 历史记录设置
-        enable_history: true,
-        max_history: 100,
-        // 下载设置
-        enable_text_download: true,
-        enable_postfile_download: true,
-        enable_attach_download: true,
-        enable_op_download: true,
-        files_pack_mode: 'all',
-        default_merge_mode: 'main',
-        // 自动回复设置
-        enable_auto_reply: true,
-        auto_reply_message: '感谢分享！',
-        // 自动换行设置
-        enable_auto_wrap: false,
-        min_wrap_length: 100,
-        typical_wrap_length: 200,
-        max_wrap_length: 300,
-        wrap_dot: '.。？?!！',
-        wrap_comma: ',，、;；',
-        // 代表作设置
-        data_cache_time: 168 * 3600 * 1000, // 7天
-        masterpiece_num: 10,
-        default_masterpiece_sort: 'view',
-        // 屏蔽词设置
-        enable_block_keyword: false,
-        block_keywords: [],
-        // 黑名单设置
-        enable_blacklist: false,
-        blacklist: [],
     };
 
     // ========================================================================================================
@@ -210,587 +227,594 @@
 
     // 设置弹窗框架
     GM_addStyle(`
-        #helper-popup {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 50%;
-            min-width: 600px;
-            min-height: 300px;
-            max-height: 85%;
-            background-color: white;
-            color: black !important;
-            border: 1px solid #ccc;
-            z-index: 2000;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-            border-radius: 12px;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
+            #helper-popup {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 50%;
+                min-width: 600px;
+                min-height: 300px;
+                max-height: 85%;
+                background-color: white;
+                color: black !important;
+                border: 1px solid #ccc;
+                z-index: 2000;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+                border-radius: 12px;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
 
-        #helper-title-container {
-            display: flex;
-            align-items: center;
-            padding: 20px;
-            font-size: 1.5rem;
-            font-weight: bold;
-            text-align: left;
-            border-bottom: 1px solid #ccc;
-        }
+            #helper-title-container {
+                display: flex;
+                align-items: center;
+                padding: 20px;
+                font-size: 1.5rem;
+                font-weight: bold;
+                text-align: left;
+                border-bottom: 1px solid #ccc;
+            }
 
-        #helper-title {
-            flex: 1;
-        }
+            #helper-title {
+                flex: 1;
+            }
 
-        #helper-content-container {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-            background-color: inherit;
-        }
+            #helper-content-container {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+                background-color: inherit;
+            }
 
-        #helper-tab-btn-container {
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0;
-        }
+            #helper-tab-btn-container {
+                display: flex;
+                flex-direction: column;
+                flex-shrink: 0;
+            }
 
-        #helper-tab-content-container {
-            flex: 1;
-            padding: 10px;
-            font-size: 0.75rem;
-        }`);
+            #helper-tab-content-container {
+                flex: 1;
+                padding: 10px;
+                font-size: 0.75rem;
+            }`);
 
     // 消息弹窗
     GM_addStyle(`
-        #helper-notification-popup {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 35%;
-            min-width: 300px;
-            max-height: 80%;
-            background-color: rgba(0, 0, 0, 0.9);
-            color: white;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-            z-index: 10000;
-        }
+            #helper-notification-popup {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                width: 35%;
+                min-width: 300px;
+                max-height: 80%;
+                background-color: rgba(0, 0, 0, 0.9);
+                color: white;
+                padding: 20px;
+                border-radius: 5px;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+                z-index: 10000;
+            }
 
-        .helper-noti-message {
-            width: 100%;
-            overflow: hidden;
-            white-space: nowrap;
-        }`);
+            .helper-noti-message {
+                width: 100%;
+                overflow: hidden;
+                white-space: nowrap;
+            }`);
 
     // 弹窗关闭按钮
     GM_addStyle(`
-        .helper-close-btn {
-            border: none;
-            cursor: pointer;
-            margin-left: 10px;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            line-height: 30px;
-            text-align: center;
-            transition: background-color 0.3s;
-        }
+            .helper-close-btn {
+                border: none;
+                cursor: pointer;
+                margin-left: 10px;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                line-height: 30px;
+                text-align: center;
+                transition: background-color 0.3s;
+            }
 
-        .helper-close-btn {
-            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>');
-        }
+            .helper-close-btn {
+                background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>');
+            }
 
-        .helper-close-btn.helper-redx {
-            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="red" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>');
-        }
+            .helper-close-btn.helper-redx {
+                background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="red" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>');
+            }
 
-        .helper-close-btn:hover {
-            background-color: #ddd;
-        }`);
+            .helper-close-btn:hover {
+                background-color: #ddd;
+            }`);
 
     // 蒙版与加载动画
     GM_addStyle(`
-        #helper-loading-overlay{
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(255, 255, 255, 0.7);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 3000;
-        }
+            #helper-loading-overlay{
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(255, 255, 255, 0.7);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 3000;
+            }
 
-        #helper-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-        }
+            #helper-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+            }
 
-        .helper-spinner {
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #3498db;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-        }
+            #helper-overlay.helper-redirect-layer{
+                background-color: transparent;
+            }
 
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }`);
+            #helper-overlay.helper-shield-layer{
+                background-color: rgba(0, 0, 0, 0.5);
+                z-index: 1000;
+            }
+
+            .helper-spinner {
+                border: 5px solid #f3f3f3;
+                border-top: 5px solid #3498db;
+                border-radius: 50%;
+                width: 50px;
+                height: 50px;
+                animation: spin 1s linear infinite;
+            }
+
+            @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }`);
 
     // 顶部进度条
     GM_addStyle(`
-        #helper-top-progressbar-container {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            background-color: #eee;
-            z-index: 3000;
-        }
+            #helper-top-progressbar-container {
+                position: fixed;
+                top: 0;
+                width: 100%;
+                background-color: #eee;
+                z-index: 3000;
+            }
 
-        #helper-top-progressbar {
-            height: 5px;
-            background-color: #4caf50;
-            width: 0%;
-            transition: width 0.5s ease-in-out
-        }`);
+            #helper-top-progressbar {
+                height: 5px;
+                background-color: #4caf50;
+                width: 0%;
+                transition: width 0.5s ease-in-out
+            }`);
 
     // 开关控件
     GM_addStyle(`
-        label:has(> .helper-toggle-switch) > input {
-            display: none;
-        }
+            label:has(> .helper-toggle-switch) > input {
+                display: none;
+            }
 
-        .helper-toggle-switch {
-            position: relative;
-            display: inline-block;
-            width: 32px;
-            background-color: #ddd;
-            transition: background-color 0.3s;
-        }
+            .helper-toggle-switch {
+                position: relative;
+                display: inline-block;
+                width: 32px;
+                background-color: #ddd;
+                transition: background-color 0.3s;
+            }
 
-        .helper-toggle-switch::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 12px;
-            height: 12px;
-            background-color: white;
-            border-radius: 50%;
-            transition: transform 0.3s;
-        }
+            .helper-toggle-switch::after {
+                content: '';
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                width: 12px;
+                height: 12px;
+                background-color: white;
+                border-radius: 50%;
+                transition: transform 0.3s;
+            }
 
-        label:has(> .helper-toggle-switch) > input:checked + .helper-toggle-switch {
-            background-color: #4caf50;
-        }
+            label:has(> .helper-toggle-switch) > input:checked + .helper-toggle-switch {
+                background-color: #4caf50;
+            }
 
-        label:has(> .helper-toggle-switch) > input:checked + .helper-toggle-switch::after {
-            transform: translateX(15px);
-        }`);
+            label:has(> .helper-toggle-switch) > input:checked + .helper-toggle-switch::after {
+                transform: translateX(15px);
+            }`);
 
     // 下拉控件
     GM_addStyle(`
-        .helper-select {
-            appearance: none;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="black" class="bi bi-chevron-down" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>')
-            no-repeat right 10px center;
-            background-color: inherit;
-            color: inherit;
-            border: 1px solid #ccc;
-            padding: 0 30px 0 10px;
-            width: max-content;
-            transition: background-color 0.3s, border-color 0.3s;
-            cursor: pointer;
-            outline: none;
-        }
+            .helper-select {
+                appearance: none;
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="black" class="bi bi-chevron-down" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>')
+                no-repeat right 10px center;
+                background-color: inherit;
+                color: inherit;
+                border: 1px solid #ccc;
+                padding: 0 30px 0 10px;
+                width: max-content;
+                transition: background-color 0.3s, border-color 0.3s;
+                cursor: pointer;
+                outline: none;
+            }
 
-        .helper-select:focus {
-            background-color: #ddd;
-            border-color: #ccc;
-        }`);
+            .helper-select:focus {
+                background-color: #ddd;
+                border-color: #ccc;
+            }`);
 
     // 多选控件
     GM_addStyle(`
-        .helper-multicheck-container {
-            display: flex;
-            border: 1px solid #ccc;
-            box-sizing: border-box;
-            overflow: hidden;
-        }
+            .helper-multicheck-container {
+                display: flex;
+                border: 1px solid #ccc;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
 
-        .helper-multicheck-item {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            position: relative;
-        }
+            .helper-multicheck-item {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: background-color 0.3s;
+                position: relative;
+            }
 
-        .helper-multicheck-item:not(:first-child)::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            width: 1px;
-            background-color: #eee;
-        }
+            .helper-multicheck-item:not(:first-child)::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                left: 0;
+                width: 1px;
+                background-color: #eee;
+            }
 
-        .helper-multicheck-item:not(:first-child) {
-            padding-left: 1px;
-        }
+            .helper-multicheck-item:not(:first-child) {
+                padding-left: 1px;
+            }
 
-        .helper-multicheck-item:not(:last-child)::before {
-            display: block;
-        }
+            .helper-multicheck-item:not(:last-child)::before {
+                display: block;
+            }
 
-        .helper-multicheck-item input[type="checkbox"] {
-            position: absolute;
-            opacity: 0;
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            cursor: pointer;
-        }
+            .helper-multicheck-item input[type="checkbox"] {
+                position: absolute;
+                opacity: 0;
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                cursor: pointer;
+            }
 
-        .helper-multicheck-item input[type="checkbox"]:checked + .helper-multicheck-text {
-            background-color: #4caf50;
-        }
+            .helper-multicheck-item input[type="checkbox"]:checked + .helper-multicheck-text {
+                background-color: #4caf50;
+            }
 
-        .helper-multicheck-item .helper-multicheck-text {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            padding: 0 10px;
-            background-color: inherit;
-            border: 1px solid transparent;
-            transition: background-color 0.3s;
-            box-sizing: border-box;
-            white-space: nowrap;
-        }`);
+            .helper-multicheck-item .helper-multicheck-text {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                padding: 0 10px;
+                background-color: inherit;
+                border: 1px solid transparent;
+                transition: background-color 0.3s;
+                box-sizing: border-box;
+                white-space: nowrap;
+            }`);
 
     // 单行输入控件
     GM_addStyle(`
-        .helper-input {
-            width: 80%;
-            height: 2em;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            padding-left: 5px;
-            margin-left: 5px;
-        }`);
+            .helper-input {
+                width: 80%;
+                height: 2em;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                padding-left: 5px;
+                margin-left: 5px;
+            }`);
 
     // 标签控件
     GM_addStyle(`
-        .helper-tag-container {
-            display: flex;
-            flex-wrap: wrap;
-            margin-top: 10px;
-        }
+            .helper-tag-container {
+                display: flex;
+                flex-wrap: wrap;
+                margin-top: 10px;
+            }
 
-        .helper-tag {
-            background-color: #d2553d;
-            color: white;
-            padding: 2px 5px 2px 10px;
-            margin: 5px;
-            border-radius: 20px;
-            display: flex;
-            align-items: center;
-        }
+            .helper-tag {
+                background-color: #d2553d;
+                color: white;
+                padding: 2px 5px 2px 10px;
+                margin: 5px;
+                border-radius: 20px;
+                display: flex;
+                align-items: center;
+            }
 
-        .helper-tag .helper-tag-remove-btn {
-            background-color: transparent;
-            border: none;
-            color: white;
-            margin-left: 5px;
-            cursor: pointer;
-        }`);
+            .helper-tag .helper-tag-remove-btn {
+                background-color: transparent;
+                border: none;
+                color: white;
+                margin-left: 5px;
+                cursor: pointer;
+            }`);
 
     // 执行按钮控件
     GM_addStyle(`
-        .helper-setting-button {
-            padding: 0 20px;
-            background-color: inherit;
-            color: inherit;
-            border: 1px solid #ccc;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }`);
+            .helper-setting-button {
+                padding: 0 20px;
+                background-color: inherit;
+                color: inherit;
+                border: 1px solid #ccc;
+                cursor: pointer;
+                transition: background-color 0.3s;
+            }`);
 
     // 关注、屏蔽按钮控件
     GM_addStyle(`
-        .helper-f-button,
-        .helper-b-button {
-            padding: 2px;
-            width: 5.5rem;
-            cursor: pointer;
-            border: none;
-            border-radius: 8px;
-            color: white;
-            transition: background-color 0.3s ease;
-        }
+            .helper-f-button,
+            .helper-b-button {
+                padding: 2px;
+                width: 5.5rem;
+                cursor: pointer;
+                border: none;
+                border-radius: 8px;
+                color: white;
+                transition: background-color 0.3s ease;
+            }
 
-        .helper-b-button {
-            background-color: #d2553d;
-        }
+            .helper-b-button {
+                background-color: #d2553d;
+            }
 
-        .helper-b-button::before {
-            content: '已屏蔽';
-        }
+            .helper-b-button::before {
+                content: '已屏蔽';
+            }
 
-        .helper-f-button:not([data-hfb-followed]) {
-            background-color: #1772f6;
-        }
+            .helper-f-button:not([data-hfb-followed]) {
+                background-color: #1772f6;
+            }
 
-        .helper-f-button:not([data-hfb-followed]):hover {
-            background-color: #0063e6;
-        }
+            .helper-f-button:not([data-hfb-followed]):hover {
+                background-color: #0063e6;
+            }
 
-        .helper-f-button[data-hfb-followed] {
-            background-color: #8491a5;
-        }
+            .helper-f-button[data-hfb-followed] {
+                background-color: #8491a5;
+            }
 
-        .helper-f-button[data-hfb-followed]:hover {
-            background-color: #758195;
-        }
+            .helper-f-button[data-hfb-followed]:hover {
+                background-color: #758195;
+            }
 
-        .helper-f-button.hfb-normal:not([data-hfb-followed])::before {
-            content: '关注';
-        }
+            .helper-f-button.hfb-normal:not([data-hfb-followed])::before {
+                content: '关注';
+            }
 
-        .helper-f-button.hfb-special:not([data-hfb-followed])::before {
-            content: '特别关注';
-        }
+            .helper-f-button.hfb-special:not([data-hfb-followed])::before {
+                content: '特别关注';
+            }
 
-        .helper-f-button.hfb-thread:not([data-hfb-followed])::before {
-            content: '在本帖关注';
-        }
+            .helper-f-button.hfb-thread:not([data-hfb-followed])::before {
+                content: '在本帖关注';
+            }
 
-        .helper-f-button.hfb-normal[data-hfb-followed]::before {
-            content: '已关注';
-        }
+            .helper-f-button.hfb-normal[data-hfb-followed]::before {
+                content: '已关注';
+            }
 
-        .helper-f-button.hfb-normal[data-hfb-followed]:hover::before {
-            content: '取消关注';
-        }
+            .helper-f-button.hfb-normal[data-hfb-followed]:hover::before {
+                content: '取消关注';
+            }
 
-        .helper-f-button.hfb-special[data-hfb-followed]::before {
-            content: '已特关';
-        }
+            .helper-f-button.hfb-special[data-hfb-followed]::before {
+                content: '已特关';
+            }
 
-        .helper-f-button.hfb-special[data-hfb-followed]:hover::before {
-            content: '取消特关';
-        }
+            .helper-f-button.hfb-special[data-hfb-followed]:hover::before {
+                content: '取消特关';
+            }
 
-        .helper-f-button.hfb-thread[data-hfb-followed]::before {
-            content: '已在本帖关注';
-        }
+            .helper-f-button.hfb-thread[data-hfb-followed]::before {
+                content: '已在本帖关注';
+            }
 
-        .helper-f-button.hfb-thread[data-hfb-followed]:hover::before {
-            content: '在本帖取关';
-        }`);
+            .helper-f-button.hfb-thread[data-hfb-followed]:hover::before {
+                content: '在本帖取关';
+            }`);
 
     // 复选框控件
     GM_addStyle(`
-        .helper-checkbox {
-            appearance: none;
-            width: 10px;
-            height: 10px;
-            border: 1px solid black;
-            background-color: transparent;
-            display: inline-block;
-            position: relative;
-            margin-right: 5px;
-            cursor: pointer;
-        }
+            .helper-checkbox {
+                appearance: none;
+                width: 10px;
+                height: 10px;
+                border: 1px solid black;
+                background-color: transparent;
+                display: inline-block;
+                position: relative;
+                margin-right: 5px;
+                cursor: pointer;
+            }
 
-        .helper-checkbox:before {
-            content: '';
-            background-color: black;
-            display: block;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) scale(0);
-            width: 5px;
-            height: 5px;
-            transition: all 0.1s ease-in-out;
-        }
+            .helper-checkbox:before {
+                content: '';
+                background-color: black;
+                display: block;
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) scale(0);
+                width: 5px;
+                height: 5px;
+                transition: all 0.1s ease-in-out;
+            }
 
-        .helper-checkbox:checked:before {
-            transform: translate(-50%, -50%) scale(1);
-        }
+            .helper-checkbox:checked:before {
+                transform: translate(-50%, -50%) scale(1);
+            }
 
-        .helper-checkbox-label {
-            color: black;
-            cursor: pointer;
-            user-select: none;
-            display: flex;
-            align-items: center;
-        }`);
+            .helper-checkbox-label {
+                color: black;
+                cursor: pointer;
+                user-select: none;
+                display: flex;
+                align-items: center;
+            }`);
 
     // 控件通用样式
     GM_addStyle(`
-        .helper-active-component {
-            height: 32px;
-            border-radius: 32px;
-        }
+            .helper-active-component {
+                height: 32px;
+                border-radius: 32px;
+            }
 
-        .helper-halfheight-active-component {
-            height: 16px;
-            border-radius: 16px;
-        }`);
+            .helper-halfheight-active-component {
+                height: 16px;
+                border-radius: 16px;
+            }`);
 
     // 弹窗表格
     GM_addStyle(`
-        .helper-popup-table {
-            width: 100%;
-            height: 100%;
-            border-collapse: collapse;
-        }
+            .helper-popup-table {
+                width: 100%;
+                height: 100%;
+                border-collapse: collapse;
+            }
 
-        .helper-scroll-component:has(> .helper-popup-table) {
-            padding-top: 0 !important;
-        }
+            .helper-scroll-component:has(> .helper-popup-table) {
+                padding-top: 0 !important;
+            }
 
-        .helper-popup-table th,
-        .helper-popup-table td {
-            padding: 8px;
-            text-align: center;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 10rem;
-        }
+            .helper-popup-table th,
+            .helper-popup-table td {
+                padding: 8px;
+                text-align: center;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 10rem;
+            }
 
-        .helper-sticky-header {
-            position: sticky;
-            top: 0px;
-            padding-top: 10px;
-            background-color: white;
-        }
+            .helper-sticky-header {
+                position: sticky;
+                top: 0px;
+                padding-top: 10px;
+                background-color: white;
+            }
 
-        th.helper-sortby::after {
-            content: '▼';
-        }`);
+            th.helper-sortby::after {
+                content: '▼';
+            }`);
 
     // 弹窗表格中复用移动版主题span
     GM_addStyle(`
-        .helper-popup-table .micon{
-            background-color: #6db1d5;
-            color: white;
-            padding: 1px;
-            margin-right: 3px;
-            border-radius: 2px;
-            overflow: hidden;
-        }
+            .helper-popup-table .micon{
+                background-color: #6db1d5;
+                color: white;
+                padding: 1px;
+                margin-right: 3px;
+                border-radius: 2px;
+                overflow: hidden;
+            }
 
-        .helper-popup-table .top{
-            background-color: #ff9900;
-        }
+            .helper-popup-table .top{
+                background-color: #ff9900;
+            }
 
-        .helper-popup-table .lock{
-            background-color: #ff5656;
-        }
+            .helper-popup-table .lock{
+                background-color: #ff5656;
+            }
 
-        .helper-popup-table .digest{
-            background-color: #b3cc0d;
-        }`);
+            .helper-popup-table .digest{
+                background-color: #b3cc0d;
+            }`);
 
     // 其它弹窗样式
     GM_addStyle(`
-        .helper-hr {
-            margin: 0;
-            border: 0;
-            border-top: 1px solid #ccc;
-        }
+            .helper-hr {
+                margin: 0;
+                border: 0;
+                border-top: 1px solid #ccc;
+            }
 
-        .helper-scroll-component {
-            overflow-y: auto;
-            scrollbar-width: thin;
-            scrollbar-color: #888 #eee;
-        }
+            .helper-scroll-component {
+                overflow-y: auto;
+                scrollbar-width: thin;
+                scrollbar-color: #888 #eee;
+            }
 
-        .helper-tab-btn {
-            padding: 10px;
-            border: none;
-            background-color: transparent;
-            color: inherit;
-            cursor: pointer;
-            text-align: center;
-            font-size: 0.75rem;
-            font-weight: 500;
-            margin: 5px;
-            border-radius: 12px;
-            transition: background-color 0.3s;
-            white-space: nowrap;
-        }
+            .helper-tab-btn {
+                padding: 10px;
+                border: none;
+                background-color: transparent;
+                color: inherit;
+                cursor: pointer;
+                text-align: center;
+                font-size: 0.75rem;
+                font-weight: 500;
+                margin: 5px;
+                border-radius: 12px;
+                transition: background-color 0.3s;
+                white-space: nowrap;
+            }
 
-        .helper-tab-selected {
-            background-color: #ddd;
-        }
+            .helper-tab-selected {
+                background-color: #ddd;
+            }
 
-        div.helper-center-message {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100%;
-            width: 100%;
-            padding: 0;
-        }
+            div.helper-center-message {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100%;
+                width: 100%;
+                padding: 0;
+            }
 
-        .helper-footnote {
-            position: absolute;
-            bottom: 2px;
-            left: 5px;
-            font-size: 70%;
-            color: #ccc;
-            background-color: inherit;
-        }
+            .helper-footnote {
+                position: absolute;
+                bottom: 2px;
+                left: 5px;
+                font-size: 70%;
+                color: #ccc;
+                background-color: inherit;
+            }
 
-        .helper-setting-container {
-            display: flex;
-            min-height: 36px;
-            justify-content: space-between;
-            align-items: center;
-            padding: 5px;
-        }
+            .helper-setting-container {
+                display: flex;
+                min-height: 36px;
+                justify-content: space-between;
+                align-items: center;
+                padding: 5px;
+            }
 
-        div:has(> .helper-setting-container) .helper-setting-container:not(:last-of-type) {
-            border-bottom: 1px solid #ccc;
-        }`);
+            div:has(> .helper-setting-container) .helper-setting-container:not(:last-of-type) {
+                border-bottom: 1px solid #ccc;
+            }`);
 
 
 
     // 其它样式
     GM_addStyle(`
-        .helper-ellip-link {
-            display: inline-block;
-            color: #004e83 !important;
-            overflow: hidden;
-            max-width: calc(min(70%, 30rem));
-            text-overflow: ellipsis;
-            vertical-align: top;
-        }`);
+            .helper-ellip-link {
+                display: inline-block;
+                color: #004e83 !important;
+                overflow: hidden;
+                max-width: calc(min(70%, 30rem));
+                text-overflow: ellipsis;
+                vertical-align: top;
+            }`);
 
     // ========================================================================================================
     // 获取页面信息
@@ -1535,6 +1559,10 @@
     // 修改页面的工具
     // ========================================================================================================
     function setHidden(elem, hidden = true) {
+        if (!elem) {
+            return;
+        }
+
         if (hidden) {
             elem.style.display = 'none';
         }
@@ -1796,7 +1824,7 @@
         }
     }
 
-    async function modifyPostInPage() {
+    function modifyPostInPage() {
         const tid = location_params.tid;
         const posts_in_page = getPostsInPage();
         const thread_title = qS('#thread_subject').textContent;
@@ -1859,7 +1887,7 @@
         label.appendChild(checkbox);
     }
 
-    async function modifyPostPage() {
+    function modifyPostPage() {
         const the_only_author = theOnlyAuthorInfo();
 
         const saveFunc = (type = 'main') => () => {
@@ -1967,7 +1995,12 @@
             const checkbox = docre('input');
             checkbox.type = 'checkbox';
             checkbox.checked = hs.enable_debug_mode;
-            checkbox.addEventListener('change', () => { hs.enable_debug_mode = checkbox.checked; GM.setValue('helper_setting', hs); });
+            checkbox.addEventListener('change', () => {
+                hs.enable_debug_mode = checkbox.checked;
+                hs.enable_debug_mode ? log.setLevel('debug') : log.resetLevel();
+                log.log('调试模式已' + (hs.enable_debug_mode ? '开启' : '关闭'));
+                GM.setValue('helper_setting', hs);
+            });
             const text = document.createTextNode('调试模式');
             label.appendChild(checkbox);
             label.appendChild(text);
@@ -1979,9 +2012,16 @@
         executeIfLoctionMatch({ do: 'wall', uid: GM_info.script.author }, addDebugModeComponent);
     }
 
+    function modifyMainPage() {
+        setHidden(qS('#logo'));
+        setHidden(qS('#desktop'));
+        setHidden(qS('#mobile'));
+    }
+
     function modifyPageDoc() {
         if (hasReadPermission() && isLogged()) {
 
+            executeIfLoctionMatch({ loc: undefined }, modifyMainPage);
             executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, modifyPostPage);
             executeIfLoctionMatch({ loc: 'home', mod: 'space' }, modifySpacePage);
 
@@ -2129,10 +2169,11 @@
         return close_btn;
     }
 
-    function createOverlay() {
+    function createOverlay(type = 'shield', onclick = removeHelperPopup) {
         const overlay = docre('div');
         overlay.id = 'helper-overlay';
-        overlay.addEventListener('click', removeHelperPopup);
+        overlay.className = 'helper-' + type + '-layer';
+        overlay.addEventListener('click', onclick);
         return overlay;
     }
 
@@ -2147,7 +2188,7 @@
 
     function createPopupWithTitle(title) {
         const popup = docre('div');
-        const overlay = createOverlay(popup);
+        const overlay = createOverlay();
         popup.id = 'helper-popup';
 
         const helper_title_container = docre('div');
@@ -2989,18 +3030,6 @@
     // 主体运行
     // ========================================================================================================
     insertHelperLink();
-
-    const hs = GM_getValue('helper_setting', {});
-    let default_updated = false;
-    for (let key in helper_default_setting) {
-        if (!(key in hs)) {
-            hs[key] = helper_default_setting[key];
-            default_updated = true;
-        }
-    }
-    if (default_updated) {
-        GM.setValue('helper_setting', hs);
-    }
 
     if (hs.enable_notification) {
         updateNotificationPopup();
