@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.7
+// @version      1.0.8
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -163,7 +163,7 @@
     });
 
     const executeIfLoctionMatch = (params, func) => {
-        if (Object.entries(params).every(([k, v]) => location_params[k] == v)) {
+        if (Object.entries(params).every(([k, v]) => Array.isArray(v) ? v.includes(location_params[k]) : v == location_params[k])) {
             func();
         }
     };
@@ -1839,8 +1839,6 @@
                 blockUser(uid, name);
                 updatePageDoc();
             }, profile_icon);
-
-            updatePageDoc();
         }
 
         const label = docre('label');
@@ -1861,34 +1859,6 @@
         label.appendChild(checkbox);
     }
 
-    async function insertSpaceCheckbox() {
-        const thread_table = qS('#delform > table > tbody');
-        if (qS('.emp', thread_table)) {
-            return;
-        }
-
-        const uid = location_params.uid;
-        const thread_in_page = qSA('tr:not(.th)', thread_table);
-
-        for (let thread of thread_in_page) {
-            const link = qS('th > a', thread)
-            const tid = link.href.parseURL().tid;
-            const checkbox = docre('input');
-            checkbox.id = 'thread_check_' + tid;
-            checkbox.type = 'checkbox';
-            checkbox.className = 'pc';
-
-            insertElement(checkbox, link);
-
-            if (qS('td:nth-child(3) > a', thread).textContent == '保密存档') {
-                checkbox.disabled = true;
-                continue;
-            }
-
-            checkbox.addEventListener('change', () => { recordCheckbox(`${uid}_checked_threads`, checkbox.id, checkbox.checked) });// 每个用户设置一个数组，存入被选中的thread的ID
-        }
-    }
-
     async function modifyPostPage() {
         const the_only_author = theOnlyAuthorInfo();
 
@@ -1900,82 +1870,98 @@
             });
         };
 
+        const down_first_link_pos = qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong');
         if (isFirstPage(location_params)) {
-            insertInteractiveLink('保存主楼  ', saveFunc(), qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
+            insertInteractiveLink('保存主楼  ', saveFunc(), down_first_link_pos);
         }
 
+        const down_thread_link_pos = qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div');
         if (the_only_author) {
-            insertInteractiveLink('保存作者  ', saveFunc('all'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+            insertInteractiveLink('保存作者  ', saveFunc('all'), down_thread_link_pos);
         }
         else {
-            insertInteractiveLink('保存全帖  ', saveFunc('all'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+            insertInteractiveLink('保存全帖  ', saveFunc('all'), down_thread_link_pos);
         }
-
-        insertInteractiveLink('保存选中  ', saveFunc('checked'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+        insertInteractiveLink('保存选中  ', saveFunc('checked'), down_thread_link_pos);
 
         modifyPostInPage();
     }
 
-    async function modifySpacePage() {
-        if (!Boolean(location_params.type)) {
-            location_params.type = 'thread';
-        }
-        const { uid, type, view, from, mod, loc } = location_params;
-
-        if (location_params.do == 'thread') {
-            if (type == 'thread') {
-                insertSpaceCheckbox();
-
-                const pos = qS('#delform > table > tbody > tr.th > th');
-                const save_select = docre('select');
-                const save_types = ['main', 'all', 'author'];
-                const save_types_text = ['主楼（合并）', '全帖（打包）', '作者（打包）'];
-                for (let i = 0; i < save_types.length; i++) {
-                    const option = docre('option');
-                    option.value = save_types[i];
-                    option.textContent = save_types_text[i];
-                    save_select.appendChild(option);
-                    if (save_types[i] == hs.default_merge_mode) {
-                        option.selected = true;
-                    }
-                }
-
-                const save_link = insertInteractiveLink('  下载 ', () => saveMergedThreads(save_select.value), pos);
-                save_select.addEventListener('change', () => {
-                    const new_save_link = save_link.cloneNode(true);
-                    new_save_link.addEventListener('click', () => {
-                        saveMergedThreads(save_select.value);
-                    });
-                    save_link.replaceWith(new_save_link);
-                });
-                save_select.style.display = 'none';
-
-                pos.appendChild(save_select);
-            }
-            if (view == 'me' && from == 'space') {
-                const user_name = getSpaceAuthor();
-                const header = document.querySelector('#ct > div.mn > div > div.bm_h > h1');
-                const masterpiece = docre('span');
-                masterpiece.className = 'xs1 xw0';
-                const pipe = docre('span');
-                pipe.className = 'pipe';
-                pipe.textContent = '|';
-                masterpiece.appendChild(pipe);
-                insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, user_name), masterpiece);
-                header.appendChild(masterpiece);
-            }
-        }
-
+    function modifySpacePage() {
+        const uid = location_params.uid;
         const toptb = qS('#toptb > div.z');
         if (toptb) {
             const name = getSpaceAuthor();
-            const location_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space' };
-            insertLink(`${name}的主题`, location_params, toptb);
-            toptb.appendChild(createFollowButton({ uid, name, tid: type == 'reply' ? -1 : 0 }));
-            updatePageDoc();
+            insertLink(`${name}的主题`, { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space' }, toptb);
+            toptb.appendChild(createFollowButton({ uid, name, tid: location_params?.type == 'reply' ? -1 : 0 }));
+            // updatePageDoc();
         }
 
-        if (mod == 'space' && uid == GM_info.script.author && location_params.do == 'wall' && loc == 'home') {
+        const addMergedownComponent = () => {
+            const pos = qS('#delform > table > tbody > tr.th > th');
+            const save_select = docre('select');
+            const save_types = ['main', 'all', 'author'];
+            const save_types_text = ['主楼（合并）', '全帖（打包）', '作者（打包）'];
+            for (let i = 0; i < save_types.length; i++) {
+                const option = docre('option');
+                option.value = save_types[i];
+                option.textContent = save_types_text[i];
+                save_select.appendChild(option);
+                if (save_types[i] == hs.default_merge_mode) {
+                    option.selected = true;
+                }
+            }
+
+            const save_link = insertInteractiveLink('  下载 ', () => saveMergedThreads(save_select.value), pos);
+            save_select.addEventListener('change', () => {
+                const new_save_link = save_link.cloneNode(true);
+                new_save_link.addEventListener('click', () => {
+                    saveMergedThreads(save_select.value);
+                });
+                save_link.replaceWith(new_save_link);
+            });
+            save_select.style.display = 'none';
+
+            pos.appendChild(save_select);
+
+            const thread_table = qS('#delform > table > tbody');
+            if (qS('.emp', thread_table)) {
+                return;
+            }
+
+            const thread_in_page = qSA('tr:not(.th)', thread_table);
+
+            for (let thread of thread_in_page) {
+                const link = qS('th > a', thread)
+                const tid = link.href.parseURL().tid;
+                const checkbox = docre('input');
+                checkbox.id = 'thread_check_' + tid;
+                checkbox.type = 'checkbox';
+                checkbox.className = 'pc';
+
+                insertElement(checkbox, link);
+
+                if (qS('td:nth-child(3) > a', thread).textContent == '保密存档') {
+                    checkbox.disabled = true;
+                    continue;
+                }
+
+                checkbox.addEventListener('change', () => { recordCheckbox(`${uid}_checked_threads`, checkbox.id, checkbox.checked) });// 每个用户设置一个数组，存入被选中的thread的ID
+            }
+        };
+        const addMasterpieceComponent = () => {
+            const user_name = getSpaceAuthor();
+            const header = document.querySelector('#ct > div.mn > div > div.bm_h > h1');
+            const masterpiece = docre('span');
+            masterpiece.className = 'xs1 xw0';
+            const pipe = docre('span');
+            pipe.className = 'pipe';
+            pipe.textContent = '|';
+            masterpiece.appendChild(pipe);
+            insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, user_name), masterpiece);
+            header.appendChild(masterpiece);
+        };
+        const addDebugModeComponent = () => {
             const pos = qS('#pcd > div > ul');
             const label = docre('label');
             const checkbox = docre('input');
@@ -1986,20 +1972,20 @@
             label.appendChild(checkbox);
             label.appendChild(text);
             pos.appendChild(label);
-        }
+        };
+
+        executeIfLoctionMatch({ do: 'thread', type: ['thread', undefined] }, addMergedownComponent);
+        executeIfLoctionMatch({ do: 'thread', view: 'me', from: 'space' }, addMasterpieceComponent);
+        executeIfLoctionMatch({ do: 'wall', uid: GM_info.script.author }, addDebugModeComponent);
     }
 
     function modifyPageDoc() {
         if (hasReadPermission() && isLogged()) {
 
             executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, modifyPostPage);
-            executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, updatePostPages);
-
-            executeIfLoctionMatch({ loc: 'forum', mod: 'forumdisplay' }, updateForumPage);
-
             executeIfLoctionMatch({ loc: 'home', mod: 'space' }, modifySpacePage);
-            executeIfLoctionMatch({ loc: 'home', mod: 'space' }, updateSpacePage);
 
+            updatePageDoc();
 
             // if (location_params.loc == 'forum') {
             //     if (location_params.mod == 'viewthread') {
@@ -2026,7 +2012,7 @@
     // ========================================================================================================
     // 更新页面内容
     // ========================================================================================================
-    function updatePostPages() {
+    function updatePostsStaus() {
         const posts_in_page = getPostsInPage();
         const tid = location_params.tid;
 
@@ -2049,7 +2035,7 @@
         });
     }
 
-    function updateForumPage() {
+    function updateForumStaus() {
         qSA('[id^=normalthread]').forEach(thread => {
             const title = qS('a.s.xst', thread).innerText.trim().toLowerCase();
             const uid = qS('td.by cite a', thread).href.parseURL().uid;
@@ -2067,28 +2053,15 @@
         });
     }
 
-    async function updateSpacePage() {
-        if (!Boolean(location_params.type)) {
-            location_params.type = 'thread';
-        }
-        const { uid, type } = location_params;
-
-        if (location_params.do == 'thread') {
-            // 更新多选下载复选框
-            if (type == 'thread') {
-                const checked_threads = await GM.getValue(uid + '_checked_threads', []);
-                qSA('[id^=thread_check_]').forEach(e => {
-                    e.checked = checked_threads.includes(e.id.slice(13));
-                });
-            }
-        }
+    async function updateMergedownStaus() {
+        // 更新多选下载复选框
+        const checked_threads = await GM.getValue(location_params.uid + '_checked_threads', []);
+        qSA('[id^=thread_check_]').forEach(e => {
+            e.checked = checked_threads.includes(e.id.slice(13));
+        });
     }
 
-    function updatePageDoc() {
-        executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, updatePostPages);
-        executeIfLoctionMatch({ loc: 'forum', mod: 'forumdisplay' }, updateForumPage);
-        executeIfLoctionMatch({ loc: 'home', mod: 'space' }, updateSpacePage);
-
+    function updateFollowOrBlockButtonsStatus() {
         for (let { uid } of hs.blacklist) {
             qSA(`.helper-f-button[data-hfb-uid='${uid}']`).forEach(e => {
                 e.removeAttribute('data-hfb-followed');
@@ -2125,6 +2098,13 @@
                 });
             }
         });
+    }
+
+    function updatePageDoc() {
+        executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, updatePostsStaus);
+        executeIfLoctionMatch({ loc: 'forum', mod: 'forumdisplay' }, updateForumStaus);
+        executeIfLoctionMatch({ loc: 'home', mod: 'space', do: 'thread', type: ['thread', undefined] }, updateMergedownStaus);
+        updateFollowOrBlockButtonsStatus();
     }
 
     // ========================================================================================================
