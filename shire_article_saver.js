@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.0.2
+// @version      1.0.12.1
 // @description  Download shire thread content.
 // @author       80824
-// @match        https://www.shireyishunjian.com/main/*
+// @match        https://www.shireyishunjian.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
 // @grant        unsafeWindow
 // @grant        GM.getValue
@@ -21,6 +21,7 @@
 // @downloadURL https://update.greasyfork.org/scripts/461311/shire%20helper.user.js
 // @updateURL https://update.greasyfork.org/scripts/461311/shire%20helper.meta.js
 // @require https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js
+// @require https://cdnjs.cloudflare.com/ajax/libs/loglevel/1.9.2/loglevel.min.js
 
 // ==/UserScript==
 
@@ -34,20 +35,76 @@
     const qSA = (selector, scope = document) => scope.querySelectorAll(selector);
     const docre = tag => document.createElement(tag);
     String.prototype.parseURL = function () {
-        let obj = {};
-        this.replace(/([^?=&#]+)=([^?=&#]+)/g, (_, key, value) => { obj[key] = value });
-        this.replace(/#([^?=&#]+)/g, (_, hash) => { obj.hash = hash });
-        this.replace(/(\w+)\.php/, (_, loc) => { obj.loc = loc });
+        const url = new URL(this);
+        let obj = { hostname: url.hostname, hash: url.hash, pathname: url.pathname };
+        obj.loc = obj.pathname?.match(/([^\/]+)\.[^\.]*/)?.at(1);
+        for (let [k, v] of url.searchParams.entries()) {
+            obj[k] = v;
+        }
         return obj;
     };
+
+    // ========================================================================================================
+    // 初始化设置
+    // ========================================================================================================
+    const helper_default_setting = {
+        // 消息通知设置
+        enable_notification: true,
+        max_noti_threads: 3,
+        important_fids: ['78'],
+        // 历史记录设置
+        enable_history: true,
+        max_history: 100,
+        // 下载设置
+        enable_text_download: true,
+        enable_postfile_download: true,
+        enable_attach_download: true,
+        enable_op_download: true,
+        files_pack_mode: 'all',
+        default_merge_mode: 'main',
+        // 自动回复设置
+        enable_auto_reply: false,
+        auto_reply_message: '感谢分享！',
+        // 自动换行设置
+        enable_auto_wrap: false,
+        min_wrap_length: 100,
+        typical_wrap_length: 200,
+        max_wrap_length: 300,
+        wrap_dot: '.。？?!！',
+        wrap_comma: ',，、;；',
+        // 代表作设置
+        data_cache_time: 168 * 3600 * 1000, // 7天
+        masterpiece_num: 10,
+        default_masterpiece_sort: 'view',
+        // 屏蔽词设置
+        enable_block_keyword: false,
+        block_keywords: [],
+        // 黑名单设置
+        enable_blacklist: false,
+        blacklist: [],
+    };
+
+    const hs = GM_getValue('helper_setting', {});
+    let default_updated = false;
+    for (let key in helper_default_setting) {
+        if (!(key in hs)) {
+            hs[key] = helper_default_setting[key];
+            default_updated = true;
+        }
+    }
+    if (default_updated) {
+        GM.setValue('helper_setting', hs);
+    }
 
     // ========================================================================================================
     // 判断脚本启用条件
     // ========================================================================================================
     const location_params = document.URL.parseURL();
-    const is_desktop = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
+    log.log('Location params:', location_params);
 
-    if (!is_desktop) {
+    const is_desktop = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
+    if (location_params.loc != undefined && !is_desktop) {
+        log.log('Mobile version detected, shire-helper disabled.');
         return;
     }
 
@@ -77,43 +134,6 @@
         'text/plain': 'txt'
     };
 
-    const helper_default_setting = {
-        // 消息通知设置
-        enable_notification: true,
-        max_noti_threads: 3,
-        important_fids: ['78'],
-        // 历史记录设置
-        enable_history: true,
-        max_history: 100,
-        // 下载设置
-        enable_text_download: true,
-        enable_postfile_download: true,
-        enable_attach_download: true,
-        enable_op_download: true,
-        files_pack_mode: 'all',
-        default_merge_mode: 'main',
-        // 自动回复设置
-        enable_auto_reply: true,
-        auto_reply_message: '感谢分享！',
-        // 自动换行设置
-        enable_auto_wrap: false,
-        min_wrap_length: 100,
-        typical_wrap_length: 200,
-        max_wrap_length: 300,
-        wrap_dot: '.。？?!！',
-        wrap_comma: ',，、;；',
-        // 代表作设置
-        data_cache_time: 168 * 3600 * 1000,
-        masterpiece_num: 10,
-        default_masterpiece_sort: 'view',
-        // 屏蔽词设置
-        enable_block_keyword: false,
-        block_keywords: [],
-        // 黑名单设置
-        enable_blacklist: false,
-        blacklist: [],
-    };
-
     // ========================================================================================================
     // 通用工具
     // ========================================================================================================
@@ -139,12 +159,12 @@
             { info: '年前', dt: 365 * 24 * 60 * 60 * 1000 },
             { info: '个月前', dt: 30 * 24 * 60 * 60 * 1000 },
             { info: '天前', dt: 24 * 60 * 60 * 1000 },
-            { info: '小时前', dt: 60 * 60 * 1000 },
-            { info: '分钟前', dt: 60 * 1000, bound: 5 * 60 * 1000 }
+            // { info: '小时前', dt: 60 * 60 * 1000 },
+            // { info: '分钟前', dt: 60 * 1000, bound: 5 * 60 * 1000 }
         ];
-        const unit = units.find(({ dt, bound }) => diff >= (bound !== undefined ? bound : dt));
-        return unit ? `${Math.floor(diff / unit.dt)}${unit.info}` : '刚刚';
-    }
+        const unit = units.find(({ dt, bound }) => diff >= bound ?? dt); // 如果有bound则以bound为界限，否则以dt为界限
+        return unit ? `${Math.floor(diff / unit.dt)}${unit.info}` : '今天内';
+    };
 
     const checkVariableDefined = (variable_name, timeout = 15000, time_interval = 100) => new Promise((resolve, reject) => {
         const startTime = Date.now();
@@ -160,7 +180,17 @@
         }
 
         check();
-    })
+    });
+
+    const executeIfLoctionMatch = (func, params) => {
+        const matchFunc = ([k, v]) => {
+            const loc_v = location_params[k] == '' ? undefined : location_params[k];
+            return Array.isArray(v) ? v.includes(loc_v) : v == loc_v
+        };
+        if (Object.entries(params).every(matchFunc)) {
+            func();
+        }
+    };
 
     // ========================================================================================================
     // GM Value 工具
@@ -201,536 +231,598 @@
     // ========================================================================================================
     // 自定义样式
     // ========================================================================================================
+
+    // 设置弹窗框架
     GM_addStyle(`
-#helper-notification-popup {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  width: 35%;
-  min-width: 300px;
-  max-height: 80%;
-  background-color: rgba(0, 0, 0, 0.9);
-  color: white;
-  padding: 20px;
-  border-radius: 5px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-  z-index: 10000;
-}
-
-.helper-noti-message {
-  width: 100%;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.helper-ellip-link {
-  display: inline-block;
-  color: #004e83 !important;
-  overflow: hidden;
-  max-width: calc(min(70%, 30rem));
-  text-overflow: ellipsis;
-  vertical-align: top;
-}
-
-#helper-loading-overlay{
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(255, 255, 255, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 3000;
-}
-
-#helper-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-}
-
-#helper-popup {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 50%;
-  min-width: 600px;
-  min-height: 300px;
-  max-height: 85%;
-  background-color: white;
-  color: black !important;
-  border: 1px solid #ccc;
-  z-index: 2000;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-#helper-title-container {
-  display: flex;
-  align-items: center;
-  padding: 20px;
-  font-size: 1.5rem;
-  font-weight: bold;
-  text-align: left;
-  border-bottom: 1px solid #ccc;
-}
-
-#helper-title {
-  flex: 1;
-}
-
-.helper-close-btn {
-  border: none;
-  cursor: pointer;
-  margin-left: 10px;
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  line-height: 30px;
-  text-align: center;
-  transition: background-color 0.3s;
-}
-
-.helper-close-btn {
-  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>');
-}
-
-.helper-close-btn.helper-redx {
-  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="red" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>');
-}
-
-.helper-close-btn:hover {
-  background-color: #ddd;
-}
-
-.helper-hr {
-  margin: 0;
-  border: 0;
-  border-top: 1px solid #ccc;
-}
-
-#helper-content-container {
-  display: flex;
-  overflow: hidden;
-  background-color: inherit;
-}
-
-.helper-footnote {
-  position: absolute;
-  bottom: 2px;
-  left: 5px;
-  font-size: 70%;
-  color: #ccc;
-  background-color: inherit;
-}
-
-.helper-scroll-component {
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #888 #eee;
-}
-
-#helper-tab-btn-container {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-.helper-tab-btn {
-  padding: 10px;
-  border: none;
-  background-color: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: center;
-  font-size: 0.75rem;
-  font-weight: 500;
-  margin: 5px;
-  border-radius: 12px;
-  transition: background-color 0.3s;
-  white-space: nowrap;
-}
-
-.helper-tab-selected {
-  background-color: #ddd;
-}
-
-#helper-tab-content-container {
-  flex: 1;
-  padding: 10px;
-  font-size: 0.75rem;
-}
-
-.helper-active-component {
-  height: 32px;
-  border-radius: 32px;
-}
-
-.helper-halfheight-active-component {
-  height: 16px;
-  border-radius: 16px;
-}
-
-div.helper-center-message {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  width: 100%;
-  padding: 0;
-}
-
-.helper-setting-container {
-  display: flex;
-  min-height: 36px;
-  justify-content: space-between;
-  align-items: center;
-  padding: 5px;
-}
-
-div:has(> .helper-setting-container)
-  .helper-setting-container:not(:last-of-type) {
-  border-bottom: 1px solid #ccc;
-}
-
-label:has(> .helper-toggle-switch) > input {
-  display: none;
-}
-
-.helper-toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 32px;
-  background-color: #ddd;
-  transition: background-color 0.3s;
-}
-
-.helper-toggle-switch::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  background-color: white;
-  border-radius: 50%;
-  transition: transform 0.3s;
-}
-
-label:has(> .helper-toggle-switch) > input:checked + .helper-toggle-switch {
-  background-color: #4caf50;
-}
-
-label:has(> .helper-toggle-switch)
-  > input:checked
-  + .helper-toggle-switch::after {
-  transform: translateX(15px);
-}
-
-.helper-select {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="black" class="bi bi-chevron-down" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>')
-    no-repeat right 10px center;
-  background-color: inherit;
-  color: inherit;
-  border: 1px solid #ccc;
-  padding: 0 30px 0 10px;
-  width: max-content;
-  transition: background-color 0.3s, border-color 0.3s;
-  cursor: pointer;
-  outline: none;
-}
-
-.helper-select:focus {
-  background-color: #ddd;
-  border-color: #ccc;
-}
-
-.helper-multicheck-container {
-  display: flex;
-  border: 1px solid #ccc;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.helper-multicheck-item {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background-color 0.3s;
-  position: relative;
-}
-
-.helper-multicheck-item:not(:first-child)::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 1px;
-  background-color: #eee;
-}
-
-.helper-multicheck-item:not(:first-child) {
-  padding-left: 1px;
-}
-
-.helper-multicheck-item:not(:last-child)::before {
-  display: block;
-}
-
-.helper-multicheck-item input[type="checkbox"] {
-  position: absolute;
-  opacity: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  cursor: pointer;
-}
-
-.helper-multicheck-item
-  input[type="checkbox"]:checked
-  + .helper-multicheck-text {
-  background-color: #4caf50;
-}
-
-.helper-multicheck-item .helper-multicheck-text {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 0 10px;
-  background-color: inherit;
-  border: 1px solid transparent;
-  transition: background-color 0.3s;
-  box-sizing: border-box;
-  white-space: nowrap;
-}
-
-.helper-setting-button {
-  padding: 0 20px;
-  background-color: inherit;
-  color: inherit;
-  border: 1px solid #ccc;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.helper-f-button,
-.helper-b-button {
-  padding: 2px;
-  width: 5.5rem;
-  cursor: pointer;
-  border: none;
-  border-radius: 8px;
-  color: white;
-  transition: background-color 0.3s ease;
-}
-
-.helper-b-button {
-  background-color: #d2553d;
-}
-
-.helper-b-button::before {
-  content: '已屏蔽';
-}
-
-.helper-f-button:not([data-hfb-followed]) {
-  background-color: #1772f6;
-}
-
-.helper-f-button:not([data-hfb-followed]):hover {
-  background-color: #0063e6;
-}
-
-.helper-f-button[data-hfb-followed] {
-  background-color: #8491a5;
-}
-
-.helper-f-button[data-hfb-followed]:hover {
-  background-color: #758195;
-}
-
-.helper-f-button.hfb-normal:not([data-hfb-followed])::before {
-  content: '关注';
-}
-
-.helper-f-button.hfb-special:not([data-hfb-followed])::before {
-  content: '特别关注';
-}
-
-.helper-f-button.hfb-thread:not([data-hfb-followed])::before {
-  content: '在本帖关注';
-}
-
-.helper-f-button.hfb-normal[data-hfb-followed]::before {
-  content: '已关注';
-}
-
-.helper-f-button.hfb-normal[data-hfb-followed]:hover::before {
-  content: '取消关注';
-}
-
-.helper-f-button.hfb-special[data-hfb-followed]::before {
-  content: '已特关';
-}
-
-.helper-f-button.hfb-special[data-hfb-followed]:hover::before {
-  content: '取消特关';
-}
-
-.helper-f-button.hfb-thread[data-hfb-followed]::before {
-  content: '已在本帖关注';
-}
-
-.helper-f-button.hfb-thread[data-hfb-followed]:hover::before {
-  content: '在本帖取关';
-}
-
-.helper-checkbox {
-  appearance: none;
-  width: 10px;
-  height: 10px;
-  border: 1px solid black;
-  background-color: transparent;
-  display: inline-block;
-  position: relative;
-  margin-right: 5px;
-  cursor: pointer;
-}
-
-.helper-checkbox:before {
-  content: '';
-  background-color: black;
-  display: block;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  width: 5px;
-  height: 5px;
-  transition: all 0.1s ease-in-out;
-}
-
-.helper-checkbox:checked:before {
-  transform: translate(-50%, -50%) scale(1);
-}
-
-.helper-checkbox-label {
-  color: black;
-  cursor: pointer;
-  user-select: none;
-  display: flex;
-  align-items: center;
-}
-
-.helper-popup-table {
-  width: 100%;
-  height: 100%;
-  border-collapse: collapse;
-}
-
-.helper-scroll-component:has(> .helper-popup-table) {
-  padding-top: 0 !important;
-}
-
-.helper-popup-table th,
-.helper-popup-table td {
-  padding: 8px;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 10rem;
-}
-
-.helper-sticky-header {
-  position: sticky;
-  top: 0px;
-  padding-top: 10px;
-  background-color: white;
-}
-
-th.helper-sortby::after {
-  content: '▼';
-}
-
-.helper-spinner {
-  border: 5px solid #f3f3f3;
-  border-top: 5px solid #3498db;
-  border-radius: 50%;
-  width: 50px;
-  height: 50px;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.helper-tag-container {
-  display: flex;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-
-.helper-tag {
-  background-color: #d2553d;
-  color: white;
-  padding: 2px 5px 2px 10px;
-  margin: 5px;
-  border-radius: 20px;
-  display: flex;
-  align-items: center;
-}
-
-.helper-tag .helper-tag-remove-btn {
-  background-color: transparent;
-  border: none;
-  color: white;
-  margin-left: 5px;
-  cursor: pointer;
-}
-
-.helper-input {
-  width: 80%;
-  height: 2em;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  padding-left: 5px;
-  margin-left: 5px;
-}
-
-#helper-top-progressbar-container {
-  position: fixed;
-  top: 0;
-  width: 100%;
-  background-color: #eee;
-  z-index: 999;
-}
-
-#helper-top-progressbar {
-  height: 5px;
-  background-color: #4caf50;
-  width: 0%;
-  transition: width 0.5s ease-in-out
-}
-    `);
+            #helper-popup {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 50%;
+                min-width: 600px;
+                min-height: 300px;
+                max-height: 85%;
+                background-color: white;
+                color: black !important;
+                border: 1px solid #ccc;
+                z-index: 2000;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+                border-radius: 12px;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+
+            #helper-title-container {
+                display: flex;
+                align-items: center;
+                padding: 20px;
+                font-size: 1.5rem;
+                font-weight: bold;
+                text-align: left;
+                border-bottom: 1px solid #ccc;
+            }
+
+            #helper-title {
+                flex: 1;
+            }
+
+            #helper-content-container {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+                background-color: inherit;
+            }
+
+            #helper-tab-btn-container {
+                display: flex;
+                flex-direction: column;
+                flex-shrink: 0;
+            }
+
+            #helper-tab-content-container {
+                flex: 1;
+                padding: 10px;
+                font-size: 0.75rem;
+            }`);
+
+    // 消息弹窗
+    GM_addStyle(`
+            #helper-notification-popup {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                width: 35%;
+                min-width: 300px;
+                max-height: 80%;
+                background-color: rgba(0, 0, 0, 0.9);
+                color: white;
+                padding: 20px;
+                border-radius: 5px;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+                z-index: 10000;
+            }
+
+            .helper-noti-message {
+                width: 100%;
+                overflow: hidden;
+                white-space: nowrap;
+            }`);
+
+    // 弹窗关闭按钮
+    GM_addStyle(`
+            .helper-close-btn {
+                border: none;
+                cursor: pointer;
+                margin-left: 10px;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                line-height: 30px;
+                text-align: center;
+                transition: background-color 0.3s;
+            }
+
+            .helper-close-btn {
+                background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>');
+            }
+
+            .helper-close-btn.helper-redx {
+                background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="red" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>');
+            }
+
+            .helper-close-btn:hover {
+                background-color: #ddd;
+            }`);
+
+    // 蒙版与加载动画
+    GM_addStyle(`
+            #helper-loading-overlay{
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(255, 255, 255, 0.7);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 3000;
+            }
+
+            #helper-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+            }
+
+            #helper-overlay.helper-redirect-layer{
+                cursor: pointer;
+                background-color: transparent;
+            }
+
+            #helper-overlay.helper-shield-layer{
+                background-color: rgba(0, 0, 0, 0.5);
+                z-index: 1000;
+            }
+
+            .helper-spinner {
+                border: 5px solid #f3f3f3;
+                border-top: 5px solid #3498db;
+                border-radius: 50%;
+                width: 50px;
+                height: 50px;
+                animation: spin 1s linear infinite;
+            }
+
+            @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }`);
+
+    // 顶部进度条
+    GM_addStyle(`
+            #helper-top-progressbar-container {
+                position: fixed;
+                top: 0;
+                width: 100%;
+                background-color: #eee;
+                z-index: 3000;
+            }
+
+            #helper-top-progressbar {
+                height: 5px;
+                background-color: #4caf50;
+                width: 0%;
+                transition: width 0.5s ease-in-out
+            }`);
+
+    // 开关控件
+    GM_addStyle(`
+            label:has(> .helper-toggle-switch) > input {
+                display: none;
+            }
+
+            .helper-toggle-switch {
+                position: relative;
+                display: inline-block;
+                width: 32px;
+                background-color: #ddd;
+                transition: background-color 0.3s;
+            }
+
+            .helper-toggle-switch::after {
+                content: '';
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                width: 12px;
+                height: 12px;
+                background-color: white;
+                border-radius: 50%;
+                transition: transform 0.3s;
+            }
+
+            label:has(> .helper-toggle-switch) > input:checked + .helper-toggle-switch {
+                background-color: #4caf50;
+            }
+
+            label:has(> .helper-toggle-switch) > input:checked + .helper-toggle-switch::after {
+                transform: translateX(15px);
+            }`);
+
+    // 下拉控件
+    GM_addStyle(`
+            .helper-select {
+                appearance: none;
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="black" class="bi bi-chevron-down" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>')
+                no-repeat right 10px center;
+                background-color: inherit;
+                color: inherit;
+                border: 1px solid #ccc;
+                padding: 0 30px 0 10px;
+                width: max-content;
+                transition: background-color 0.3s, border-color 0.3s;
+                cursor: pointer;
+                outline: none;
+            }
+
+            .helper-select:focus {
+                background-color: #ddd;
+                border-color: #ccc;
+            }`);
+
+    // 多选控件
+    GM_addStyle(`
+            .helper-multicheck-container {
+                display: flex;
+                border: 1px solid #ccc;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
+
+            .helper-multicheck-item {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: background-color 0.3s;
+                position: relative;
+            }
+
+            .helper-multicheck-item:not(:first-child)::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                left: 0;
+                width: 1px;
+                background-color: #eee;
+            }
+
+            .helper-multicheck-item:not(:first-child) {
+                padding-left: 1px;
+            }
+
+            .helper-multicheck-item:not(:last-child)::before {
+                display: block;
+            }
+
+            .helper-multicheck-item input[type="checkbox"] {
+                position: absolute;
+                opacity: 0;
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                cursor: pointer;
+            }
+
+            .helper-multicheck-item input[type="checkbox"]:checked + .helper-multicheck-text {
+                background-color: #4caf50;
+            }
+
+            .helper-multicheck-item .helper-multicheck-text {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                padding: 0 10px;
+                background-color: inherit;
+                border: 1px solid transparent;
+                transition: background-color 0.3s;
+                box-sizing: border-box;
+                white-space: nowrap;
+            }`);
+
+    // 单行输入控件
+    GM_addStyle(`
+            .helper-input {
+                width: 80%;
+                height: 2em;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                padding-left: 5px;
+                margin-left: 5px;
+            }`);
+
+    // 标签控件
+    GM_addStyle(`
+            .helper-tag-container {
+                display: flex;
+                flex-wrap: wrap;
+                margin-top: 10px;
+            }
+
+            .helper-tag {
+                background-color: #d2553d;
+                color: white;
+                padding: 2px 5px 2px 10px;
+                margin: 5px;
+                border-radius: 20px;
+                display: flex;
+                align-items: center;
+            }
+
+            .helper-tag .helper-tag-remove-btn {
+                background-color: transparent;
+                border: none;
+                color: white;
+                margin-left: 5px;
+                cursor: pointer;
+            }`);
+
+    // 执行按钮控件
+    GM_addStyle(`
+            .helper-setting-button {
+                padding: 0 20px;
+                background-color: inherit;
+                color: inherit;
+                border: 1px solid #ccc;
+                cursor: pointer;
+                transition: background-color 0.3s;
+            }`);
+
+    // 关注、屏蔽按钮控件
+    GM_addStyle(`
+            .helper-f-button,
+            .helper-b-button {
+                padding: 2px;
+                width: 5.5rem;
+                cursor: pointer;
+                border: none;
+                border-radius: 8px;
+                color: white;
+                transition: background-color 0.3s ease;
+            }
+
+            .helper-b-button {
+                background-color: #d2553d;
+            }
+
+            .helper-b-button::before {
+                content: '已屏蔽';
+            }
+
+            .helper-f-button:not([data-hfb-followed]) {
+                background-color: #1772f6;
+            }
+
+            .helper-f-button:not([data-hfb-followed]):hover {
+                background-color: #0063e6;
+            }
+
+            .helper-f-button[data-hfb-followed] {
+                background-color: #8491a5;
+            }
+
+            .helper-f-button[data-hfb-followed]:hover {
+                background-color: #758195;
+            }
+
+            .helper-f-button.hfb-normal:not([data-hfb-followed])::before {
+                content: '关注';
+            }
+
+            .helper-f-button.hfb-special:not([data-hfb-followed])::before {
+                content: '特别关注';
+            }
+
+            .helper-f-button.hfb-thread:not([data-hfb-followed])::before {
+                content: '在本帖关注';
+            }
+
+            .helper-f-button.hfb-normal[data-hfb-followed]::before {
+                content: '已关注';
+            }
+
+            .helper-f-button.hfb-normal[data-hfb-followed]:hover::before {
+                content: '取消关注';
+            }
+
+            .helper-f-button.hfb-special[data-hfb-followed]::before {
+                content: '已特关';
+            }
+
+            .helper-f-button.hfb-special[data-hfb-followed]:hover::before {
+                content: '取消特关';
+            }
+
+            .helper-f-button.hfb-thread[data-hfb-followed]::before {
+                content: '已在本帖关注';
+            }
+
+            .helper-f-button.hfb-thread[data-hfb-followed]:hover::before {
+                content: '在本帖取关';
+            }`);
+
+    // 复选框控件
+    GM_addStyle(`
+            .helper-checkbox {
+                appearance: none;
+                width: 10px;
+                height: 10px;
+                border: 1px solid black;
+                background-color: transparent;
+                display: inline-block;
+                position: relative;
+                margin-right: 5px;
+                cursor: pointer;
+            }
+
+            .helper-checkbox:before {
+                content: '';
+                background-color: black;
+                display: block;
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) scale(0);
+                width: 5px;
+                height: 5px;
+                transition: all 0.1s ease-in-out;
+            }
+
+            .helper-checkbox:checked:before {
+                transform: translate(-50%, -50%) scale(1);
+            }
+
+            .helper-checkbox-label {
+                color: black;
+                cursor: pointer;
+                user-select: none;
+                display: flex;
+                align-items: center;
+            }`);
+
+    // 控件通用样式
+    GM_addStyle(`
+            .helper-active-component {
+                height: 32px;
+                border-radius: 32px;
+            }
+
+            .helper-halfheight-active-component {
+                height: 16px;
+                border-radius: 16px;
+            }`);
+
+    // 弹窗表格
+    GM_addStyle(`
+            .helper-popup-table {
+                width: 100%;
+                height: 100%;
+                border-collapse: collapse;
+            }
+
+            .helper-scroll-component:has(> .helper-popup-table) {
+                padding-top: 0 !important;
+            }
+
+            .helper-popup-table th,
+            .helper-popup-table td {
+                padding: 8px;
+                text-align: center;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 10rem;
+            }
+
+            .helper-sticky-header {
+                position: sticky;
+                top: 0px;
+                padding-top: 10px;
+                background-color: white;
+            }
+
+            th.helper-sortby::after {
+                content: '▼';
+            }`);
+
+    // 弹窗表格中复用移动版主题span
+    GM_addStyle(`
+            .helper-popup-table .micon{
+                background-color: #6db1d5;
+                color: white;
+                padding: 1px;
+                margin-right: 3px;
+                border-radius: 2px;
+                overflow: hidden;
+            }
+
+            .helper-popup-table .top{
+                background-color: #ff9900;
+            }
+
+            .helper-popup-table .lock{
+                background-color: #ff5656;
+            }
+
+            .helper-popup-table .digest{
+                background-color: #b3cc0d;
+            }`);
+
+    // 其它弹窗样式
+    GM_addStyle(`
+            .helper-hr {
+                margin: 0;
+                border: 0;
+                border-top: 1px solid #ccc;
+            }
+
+            .helper-scroll-component {
+                overflow-y: auto;
+                scrollbar-width: thin;
+                scrollbar-color: #888 #eee;
+            }
+
+            .helper-tab-btn {
+                padding: 10px;
+                border: none;
+                background-color: transparent;
+                color: inherit;
+                cursor: pointer;
+                text-align: center;
+                font-size: 0.75rem;
+                font-weight: 500;
+                margin: 5px;
+                border-radius: 12px;
+                transition: background-color 0.3s;
+                white-space: nowrap;
+            }
+
+            .helper-tab-selected {
+                background-color: #ddd;
+            }
+
+            div.helper-center-message {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100%;
+                width: 100%;
+                padding: 0;
+            }
+
+            .helper-footnote {
+                position: absolute;
+                bottom: 2px;
+                left: 5px;
+                font-size: 70%;
+                color: #ccc;
+                background-color: inherit;
+            }
+
+            .helper-setting-container {
+                display: flex;
+                min-height: 36px;
+                justify-content: space-between;
+                align-items: center;
+                padding: 5px;
+            }
+
+            div:has(> .helper-setting-container) .helper-setting-container:not(:last-of-type) {
+                border-bottom: 1px solid #ccc;
+            }`);
+
+
+
+    // 其它样式
+    GM_addStyle(`
+            .helper-ellip-link {
+                display: inline-block;
+                color: #004e83 !important;
+                overflow: hidden;
+                max-width: calc(min(70%, 30rem));
+                text-overflow: ellipsis;
+                vertical-align: top;
+            }`);
 
     // ========================================================================================================
     // 获取页面信息
@@ -739,8 +831,8 @@ th.helper-sortby::after {
         return !Boolean(qS('#messagetext', doc));
     }
 
-    function isLogged(doc = document) {
-        return Boolean(qS('#myitem')) || Boolean(qS('#myspace'));
+    function isLogged() {
+        return document.cookie.split(';').some(e => /_lastcheckfeed=\d+/.test(e));
     }
 
     function isFirstPage(URL_params) {
@@ -807,6 +899,15 @@ th.helper-sortby::after {
             return author_name ? author_name.textContent : '';
         }
     };
+
+    async function getThreadPopularity(tid) {
+        const page_doc = await getPageDocInDomain({ loc: 'forum', mod: 'viewthread', tid, mobile: '2' }, mobileUA);
+        const views = Number(qS('i.dm-eye', qS('ul.authi', page_doc)).nextSibling.textContent);
+        const replies = Number(qS('i.dm-chat-s', qS('ul.authi', page_doc)).nextSibling.textContent);
+        const favs = Number(qS('#forum > div.foot.foot_reply.flex-box.cl > a:nth-child(2)', page_doc).textContent.slice(0, -2));
+        const shares = Number(qS('#forum > div.foot.foot_reply.flex-box.cl > a:nth-child(3)', page_doc).textContent.slice(0, -2));
+        return { views, replies, favs, shares };
+    }
 
     // ========================================================================================================
     // 获取页面内容
@@ -1019,7 +1120,8 @@ th.helper-sortby::after {
         const ddt = decimalCeil(dt / page_num);
         updateProgressbar(progress, ddt);
 
-        const promises = [getPageContent(first_page, type)].concat(Array.from({ length: page_num - 1 }, async (_, i) => {
+        const promises = [getPageContent(first_page, type)];
+        promises.push(...Array.from({ length: page_num - 1 }, async (_, i) => {
             const page = await getPageDocInDomain({ loc: 'forum', mod: 'viewthread', tid, page: i + 2, authorid });
             updateProgressbar(progress, 0.8 * ddt);
             const content = await getPageContent(page, type);
@@ -1256,7 +1358,7 @@ th.helper-sortby::after {
     }
 
     async function saveMergedThreads(type = 'main') {
-        const uid = document.URL.parseURL().uid;
+        const uid = location_params.uid;
         let checked_threads = GM_getValue(uid + '_checked_threads', []);
 
         if (checked_threads.length == 0) {
@@ -1322,7 +1424,7 @@ th.helper-sortby::after {
     async function getUserNewestReply(uid, last_pid = 0) {
         // 返回用户空间回复页首页新于last_pid的回复，通过能否在首页查询到不晚于last_pid的回复判断是否可能有更多回复
 
-        const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', type: 'reply', from: 'space', mobile: 2 };
+        const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', type: 'reply', from: 'space', mobile: '2' };
         const followed_threads = GM_getValue(uid + '_followed_threads', []);
         const follow_tids = followed_threads.map(e => e.tid).filter(e => e > 0);
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
@@ -1355,19 +1457,20 @@ th.helper-sortby::after {
     async function getUserNewestThread(uid, last_tid = 0) {
         // 返回用户空间主题页首页新于last_tid的主题，通过能否在首页查询到不晚于last_tid的主题判断是否可能有更多主题
 
-        const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space', mobile: 2 };
+        const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space', mobile: '2' };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const threads_in_page = qSA('li.list', page_doc);
         let new_threads = [];
         let found = false;
         if (threads_in_page.length > 0) {
             for (let thread of threads_in_page) {
-                const tid = qS('a:nth-child(2)', thread).href.parseURL().tid;
+                const thread_title_node = qS('.threadlist_tit', thread);
+                const tid = thread_title_node.parentNode.href.parseURL().tid;
                 if (tid <= last_tid) {
                     found = true;
                     break;
                 }
-                const title = qS('a:nth-child(2) > div > em', thread).textContent;
+                const title = qS('em', thread_title_node).textContent;
                 const fid = qS('li.mr > a', thread).href.parseURL().fid;
                 new_threads.push({ tid, title, fid });
                 if (last_tid == 0) {
@@ -1382,7 +1485,7 @@ th.helper-sortby::after {
     async function getUserNewestPostInThread(uid, tid, last_pid = 0) {
         // 返回关注主题只看该作者末页（large_page_num）新于last_pid的回复，通过能否在末页查询到不晚于last_pid的回复判断是否可能有更多回复
 
-        const URL_params = { loc: 'forum', mod: 'viewthread', tid, authorid: uid, page: large_page_num, mobile: 2 };
+        const URL_params = { loc: 'forum', mod: 'viewthread', tid, authorid: uid, page: large_page_num, mobile: '2' };
         const page_doc = await getPageDocInDomain(URL_params, mobileUA);
         const posts_in_page = getPostsInPage(page_doc);
         const thread_title = qS('meta[name="keywords"]', page_doc).content;
@@ -1464,6 +1567,10 @@ th.helper-sortby::after {
     // 修改页面的工具
     // ========================================================================================================
     function setHidden(elem, hidden = true) {
+        if (!elem) {
+            return;
+        }
+
         if (hidden) {
             elem.style.display = 'none';
         }
@@ -1725,8 +1832,8 @@ th.helper-sortby::after {
         }
     }
 
-    async function modifyPostInPage() {
-        const tid = document.URL.parseURL().tid;
+    function modifyPostInPage() {
+        const tid = location_params.tid;
         const posts_in_page = getPostsInPage();
         const thread_title = qS('#thread_subject').textContent;
         let all_checked = true;
@@ -1768,8 +1875,6 @@ th.helper-sortby::after {
                 blockUser(uid, name);
                 updatePageDoc();
             }, profile_icon);
-
-            updatePageDoc();
         }
 
         const label = docre('label');
@@ -1790,36 +1895,7 @@ th.helper-sortby::after {
         label.appendChild(checkbox);
     }
 
-    async function insertSpaceCheckbox() {
-        const thread_table = qS('#delform > table > tbody');
-        if (qS('.emp', thread_table)) {
-            return;
-        }
-
-        const uid = document.URL.parseURL().uid;
-        const thread_in_page = qSA('tr:not(.th)', thread_table);
-
-        for (let thread of thread_in_page) {
-            const link = qS('th > a', thread)
-            const tid = link.href.parseURL().tid;
-            const checkbox = docre('input');
-            checkbox.id = 'thread_check_' + tid;
-            checkbox.type = 'checkbox';
-            checkbox.className = 'pc';
-
-            insertElement(checkbox, link);
-
-            if (qS('td:nth-child(3) > a', thread).textContent == '保密存档') {
-                checkbox.disabled = true;
-                continue;
-            }
-
-            checkbox.addEventListener('change', () => { recordCheckbox(`${uid}_checked_threads`, checkbox.id, checkbox.checked) });// 每个用户设置一个数组，存入被选中的thread的ID
-        }
-    }
-
-    async function modifyPostPage() {
-        const location_params = document.URL.parseURL();
+    function modifyPostPage() {
         const the_only_author = theOnlyAuthorInfo();
 
         const saveFunc = (type = 'main') => () => {
@@ -1830,138 +1906,172 @@ th.helper-sortby::after {
             });
         };
 
+        const down_first_link_pos = qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong');
         if (isFirstPage(location_params)) {
-            insertInteractiveLink('保存主楼  ', saveFunc(), qS('#postlist > div > table > tbody > tr:nth-child(1) > td.plc > div.pi > strong'));
+            insertInteractiveLink('保存主楼  ', saveFunc(), down_first_link_pos);
         }
 
+        const down_thread_link_pos = qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div');
         if (the_only_author) {
-            insertInteractiveLink('保存作者  ', saveFunc('all'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+            insertInteractiveLink('保存作者  ', saveFunc('all'), down_thread_link_pos);
         }
         else {
-            insertInteractiveLink('保存全帖  ', saveFunc('all'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+            insertInteractiveLink('保存全帖  ', saveFunc('all'), down_thread_link_pos);
         }
-
-        insertInteractiveLink('保存选中  ', saveFunc('checked'), qS('#postlist > table:nth-child(1) > tbody > tr > td.plc.ptm.pbn.vwthd > div'));
+        insertInteractiveLink('保存选中  ', saveFunc('checked'), down_thread_link_pos);
 
         modifyPostInPage();
     }
 
-    async function modifySpacePage() {
-        const URL_params = document.URL.parseURL();
-        if (!Boolean(URL_params.type)) {
-            URL_params.type = 'thread';
-        }
-        const { uid, type, view, from, mod, loc } = URL_params;
-
-        if (URL_params.do == 'thread') {
-            if (type == 'thread') {
-                insertSpaceCheckbox();
-
-                const pos = qS('#delform > table > tbody > tr.th > th');
-                const save_select = docre('select');
-                const save_types = ['main', 'all', 'author'];
-                const save_types_text = ['主楼（合并）', '全帖（打包）', '作者（打包）'];
-                for (let i = 0; i < save_types.length; i++) {
-                    const option = docre('option');
-                    option.value = save_types[i];
-                    option.textContent = save_types_text[i];
-                    save_select.appendChild(option);
-                    if (save_types[i] == hs.default_merge_mode) {
-                        option.selected = true;
-                    }
-                }
-
-                const save_link = insertInteractiveLink('  下载 ', () => saveMergedThreads(save_select.value), pos);
-                save_select.addEventListener('change', () => {
-                    const new_save_link = save_link.cloneNode(true);
-                    new_save_link.addEventListener('click', () => {
-                        saveMergedThreads(save_select.value);
-                    });
-                    save_link.replaceWith(new_save_link);
-                });
-                save_select.style.display = 'none';
-
-                pos.appendChild(save_select);
-            }
-            if (view == 'me' && from == 'space') {
-                const user_name = getSpaceAuthor();
-                const header = document.querySelector('#ct > div.mn > div > div.bm_h > h1');
-                const masterpiece = docre('span');
-                masterpiece.className = 'xs1 xw0';
-                const pipe = docre('span');
-                pipe.className = 'pipe';
-                pipe.textContent = '|';
-                masterpiece.appendChild(pipe);
-                insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, user_name), masterpiece);
-                header.appendChild(masterpiece);
-            }
-        }
-
+    function modifySpacePage() {
+        const uid = location_params.uid;
         const toptb = qS('#toptb > div.z');
         if (toptb) {
             const name = getSpaceAuthor();
-            const URL_params = { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space' };
-            insertLink(`${name}的主题`, URL_params, toptb);
-            toptb.appendChild(createFollowButton({ uid, name, tid: type == 'reply' ? -1 : 0 }));
-            updatePageDoc();
+            insertLink(`${name}的主题`, { loc: 'home', mod: 'space', uid, do: 'thread', view: 'me', from: 'space' }, toptb);
+            toptb.appendChild(createFollowButton({ uid, name, tid: location_params?.type == 'reply' ? -1 : 0 }));
+            // updatePageDoc();
         }
 
-        if (mod == 'space' && uid == GM_info.script.author && URL_params.do == 'wall' && loc == 'home') {
+        const addMergedownComponent = () => {
+            const pos = qS('#delform > table > tbody > tr.th > th');
+            const save_select = docre('select');
+            const save_types = ['main', 'all', 'author'];
+            const save_types_text = ['主楼（合并）', '全帖（打包）', '作者（打包）'];
+            for (let i = 0; i < save_types.length; i++) {
+                const option = docre('option');
+                option.value = save_types[i];
+                option.textContent = save_types_text[i];
+                save_select.appendChild(option);
+                if (save_types[i] == hs.default_merge_mode) {
+                    option.selected = true;
+                }
+            }
+
+            const save_link = insertInteractiveLink('  下载 ', () => saveMergedThreads(save_select.value), pos);
+            save_select.addEventListener('change', () => {
+                const new_save_link = save_link.cloneNode(true);
+                new_save_link.addEventListener('click', () => {
+                    saveMergedThreads(save_select.value);
+                });
+                save_link.replaceWith(new_save_link);
+            });
+            save_select.style.display = 'none';
+
+            pos.appendChild(save_select);
+
+            const thread_table = qS('#delform > table > tbody');
+            if (qS('.emp', thread_table)) {
+                return;
+            }
+
+            const thread_in_page = qSA('tr:not(.th)', thread_table);
+
+            for (let thread of thread_in_page) {
+                const link = qS('th > a', thread)
+                const tid = link.href.parseURL().tid;
+                const checkbox = docre('input');
+                checkbox.id = 'thread_check_' + tid;
+                checkbox.type = 'checkbox';
+                checkbox.className = 'pc';
+
+                insertElement(checkbox, link);
+
+                if (qS('td:nth-child(3) > a', thread).textContent == '保密存档') {
+                    checkbox.disabled = true;
+                    continue;
+                }
+
+                checkbox.addEventListener('change', () => { recordCheckbox(`${uid}_checked_threads`, checkbox.id, checkbox.checked) });// 每个用户设置一个数组，存入被选中的thread的ID
+            }
+        };
+        const addMasterpieceComponent = () => {
+            const user_name = getSpaceAuthor();
+            const header = document.querySelector('#ct > div.mn > div > div.bm_h > h1');
+            const masterpiece = docre('span');
+            masterpiece.className = 'xs1 xw0';
+            const pipe = docre('span');
+            pipe.className = 'pipe';
+            pipe.textContent = '|';
+            masterpiece.appendChild(pipe);
+            insertInteractiveLink('代表作', () => createMasterpiecePopup(uid, user_name), masterpiece);
+            header.appendChild(masterpiece);
+        };
+        const addDebugModeComponent = () => {
             const pos = qS('#pcd > div > ul');
             const label = docre('label');
             const checkbox = docre('input');
             checkbox.type = 'checkbox';
             checkbox.checked = hs.enable_debug_mode;
-            checkbox.addEventListener('change', () => { hs.enable_debug_mode = checkbox.checked; GM.setValue('helper_setting', hs); });
+            checkbox.addEventListener('change', () => {
+                hs.enable_debug_mode = checkbox.checked;
+                hs.enable_debug_mode ? log.setLevel('debug') : log.resetLevel();
+                log.log('调试模式已' + (hs.enable_debug_mode ? '开启' : '关闭'));
+                GM.setValue('helper_setting', hs);
+            });
             const text = document.createTextNode('调试模式');
             label.appendChild(checkbox);
             label.appendChild(text);
             pos.appendChild(label);
-        }
+        };
+
+        executeIfLoctionMatch(addMergedownComponent, { do: 'thread', type: ['thread', undefined] });
+        executeIfLoctionMatch(addMasterpieceComponent, { do: 'thread', view: 'me', from: 'space' });
+        executeIfLoctionMatch(addDebugModeComponent, { do: 'wall', uid: GM_info.script.author });
     }
 
-    function modifyPageDoc(init = true) {
+    function modifyIndexPage() {
+        setHidden(qS('#logo'));
+        setHidden(qS('#desktop'));
+        setHidden(qS('#mobile'));
+        insertElement(createOverlay('redirect', () => { location.href = 'main' }), qS('#info'), 'insertBefore');
+        log.log('Index page modified.');
+    }
+
+    function modifyPageDoc() {
         if (hasReadPermission() && isLogged()) {
-            if (location_params.loc == 'forum') {
-                if (location_params.mod == 'viewthread') {
-                    if (init) {
-                        modifyPostPage();
-                        // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
-                        // modifyPostOnSubmit('fastpostform', original_smilies_types);
-                    }
-                    updatePostPages();
-                }
-                if (location_params.mod == 'post') {
-                    // insertExtraSmilies('smiliesdiv', 'e_', original_smilies_types, new_smilies);
-                    // modifyBBCode2Html(original_smilies_types);
-                    // modifyPostOnSubmit('postform', original_smilies_types);
-                }
-                if (location_params.mod == 'forumdisplay') {
-                    if (init) {
-                        // insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
-                        // modifyPostOnSubmit('fastpostform', original_smilies_types);
-                    }
-                    updateForumPage();
-                }
+
+            executeIfLoctionMatch(modifyIndexPage, { pathname: '/' },);
+            executeIfLoctionMatch(modifyPostPage, { loc: 'forum', mod: 'viewthread', 'mobile': ['no', undefined] });
+            executeIfLoctionMatch(modifySpacePage, { loc: 'home', mod: 'space', 'mobile': ['no', undefined] });
+
+            updatePageDoc();
+
+
+            if (hs.enable_notification) {
+                updateNotificationPopup();
             }
 
-            if (location_params.loc == 'home') {
-                if (location_params.mod == 'space') {
-                    if (init) {
-                        modifySpacePage();
-                    }
-                    updateSpacePage();
-                }
-            }
+            // if (location_params.loc == 'forum') {
+            //     if (location_params.mod == 'viewthread') {
+            //         if (init) {
+            //             insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
+            //             modifyPostOnSubmit('fastpostform', original_smilies_types);
+            //         }
+            //     }
+            //     if (location_params.mod == 'post') {
+            //         insertExtraSmilies('smiliesdiv', 'e_', original_smilies_types, new_smilies);
+            //         modifyBBCode2Html(original_smilies_types);
+            //         modifyPostOnSubmit('postform', original_smilies_types);
+            //     }
+            //     if (location_params.mod == 'forumdisplay') {
+            //         if (init) {
+            //             insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
+            //             modifyPostOnSubmit('fastpostform', original_smilies_types);
+            //         }
+            //     }
+            // }
         }
     }
 
     // ========================================================================================================
     // 更新页面内容
     // ========================================================================================================
-    function updatePostPages() {
+    function updatePostsStaus() {
         const posts_in_page = getPostsInPage();
-        const tid = document.URL.parseURL().tid;
+        const tid = location_params.tid;
+
+        // 更新自动换行
         for (let post of posts_in_page) {
             if (hs.enable_auto_wrap) {
                 const post_content = qS('[id^=postmessage]', post);
@@ -1973,19 +2083,22 @@ th.helper-sortby::after {
             }
         }
 
+        // 更新“保存本层”复选框
         const checked_posts = GM_getValue(`${tid}_checked_posts`, []);
         qSA('[id^=post_check_]').forEach(e => {
             e.checked = checked_posts.includes(e.id.slice(11));
         });
     }
 
-    function updateForumPage() {
+    function updateForumStaus() {
         qSA('[id^=normalthread]').forEach(thread => {
             const title = qS('a.s.xst', thread).innerText.trim().toLowerCase();
             const uid = qS('td.by cite a', thread).href.parseURL().uid;
+            // 屏蔽关键词
             if (hs.enable_block_keyword && hs.block_keywords.some(keyword => title.includes(keyword))) {
                 thread.style.display = 'none';
             }
+            // 屏蔽用户
             else if (hs.enable_blacklist && hs.blacklist.some(e => e.uid == uid)) {
                 thread.style.display = 'none';
             }
@@ -1995,27 +2108,15 @@ th.helper-sortby::after {
         });
     }
 
-    async function updateSpacePage() {
-        const URL_params = document.URL.parseURL();
-        if (!Boolean(URL_params.type)) {
-            URL_params.type = 'thread';
-        }
-        const { uid, type } = URL_params;
-
-        if (URL_params.do == 'thread') {
-            if (type == 'thread') {
-                const checked_threads = await GM.getValue(uid + '_checked_threads', []);
-                qSA('[id^=thread_check_]').forEach(e => {
-                    e.checked = checked_threads.includes(e.id.slice(13));
-                });
-            }
-        }
+    async function updateMergedownStaus() {
+        // 更新多选下载复选框
+        const checked_threads = await GM.getValue(location_params.uid + '_checked_threads', []);
+        qSA('[id^=thread_check_]').forEach(e => {
+            e.checked = checked_threads.includes(e.id.slice(13));
+        });
     }
 
-    function updatePageDoc() {
-        modifyPageDoc(false); // 分类讨论执行
-
-        // 对于所有的页面都执行
+    function updateFollowOrBlockButtonsStatus() {
         for (let { uid } of hs.blacklist) {
             qSA(`.helper-f-button[data-hfb-uid='${uid}']`).forEach(e => {
                 e.removeAttribute('data-hfb-followed');
@@ -2054,6 +2155,13 @@ th.helper-sortby::after {
         });
     }
 
+    function updatePageDoc() {
+        executeIfLoctionMatch(updatePostsStaus, { loc: 'forum', mod: 'viewthread', 'mobile': ['no', undefined] });
+        executeIfLoctionMatch(updateForumStaus, { loc: 'forum', mod: 'forumdisplay', 'mobile': ['no', undefined] });
+        executeIfLoctionMatch(updateMergedownStaus, { loc: 'home', mod: 'space', do: 'thread', type: ['thread', undefined], 'mobile': ['no', undefined] });
+        updateFollowOrBlockButtonsStatus();
+    }
+
     // ========================================================================================================
     // 浮动弹窗通用工具
     // ========================================================================================================
@@ -2076,10 +2184,11 @@ th.helper-sortby::after {
         return close_btn;
     }
 
-    function createOverlay() {
+    function createOverlay(type = 'shield', onclick = removeHelperPopup) {
         const overlay = docre('div');
         overlay.id = 'helper-overlay';
-        overlay.addEventListener('click', removeHelperPopup);
+        overlay.className = 'helper-' + type + '-layer';
+        overlay.addEventListener('click', onclick);
         return overlay;
     }
 
@@ -2094,7 +2203,7 @@ th.helper-sortby::after {
 
     function createPopupWithTitle(title) {
         const popup = docre('div');
-        const overlay = createOverlay(popup);
+        const overlay = createOverlay();
         popup.id = 'helper-popup';
 
         const helper_title_container = docre('div');
@@ -2415,7 +2524,11 @@ th.helper-sortby::after {
         const all_value = GM_listValues();
         all_value.forEach(element => {
             const p = docre('p');
-            p.textContent = element + ':' + JSON.stringify(GM_getValue(element));
+            p.textContent = element;
+            p.addEventListener('click', () => {
+                div.innerHTML = '';
+                div.textContent = element + ':' + JSON.stringify(GM_getValue(element));
+            });
             div.appendChild(p);
         });
         return div;
@@ -2532,9 +2645,7 @@ th.helper-sortby::after {
     function createHelperPopup() {
         const popup = createPopupWithTitle('湿热助手');
 
-        const content_container = docre('div');
-        content_container.id = 'helper-content-container';
-        popup.appendChild(content_container);
+        const content_container = qS('#helper-content-container', popup);
 
         const tab_btn_container = docre('div');
         tab_btn_container.id = 'helper-tab-btn-container';
@@ -2705,11 +2816,10 @@ th.helper-sortby::after {
                     }));
                 }
             }
-
             if (hs.enable_history) {
                 await Promise.all(promises);
                 const old_notification_messages = GM_getValue('notification_messages', []);
-                notification_messages = notification_messages.concat(old_notification_messages);
+                notification_messages.push(...old_notification_messages);
                 updateGMList('notification_messages', notification_messages);
             }
         }
@@ -2724,21 +2834,13 @@ th.helper-sortby::after {
         div.style.width = '100%';
         div.style.paddingBottom = '10px';
 
-        let masterpiece_list = [];
-        switch (sortby) {
-            case 'reply':
-                masterpiece_list = masterpiece_info.max_reply_threads;
-                break;
-            case 'view':
-            default:
-                masterpiece_list = masterpiece_info.max_view_threads;
-        }
-
-        if (masterpiece_list.length == 0) {
+        const has_thread = ['view', 'reply'].some(e => masterpiece_info['max_' + e + '_threads'].length > 0);
+        if (!has_thread) {
             div.appendChild(createCenterMessageDiv('暂无作品'));
             return div;
         }
 
+        let masterpiece_list = [];
         const updateTable = sort_by => {
             const table = docre('table');
             table.className = 'helper-popup-table';
@@ -2785,6 +2887,7 @@ th.helper-sortby::after {
 
                 const thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: thread.tid };
                 insertLink(thread.title, thread_URL_params, thread_cell);
+                thread_cell.innerHTML = (thread.spanHTML ?? '') + thread_cell.innerHTML;
                 view_cell.textContent = thread.views;
                 reply_cell.textContent = thread.replies;
             }
@@ -2802,10 +2905,16 @@ th.helper-sortby::after {
         const content_container = qS('#helper-content-container', popup);
 
         let masterpiece_info = GM_getValue(uid + '_masterpiece', { update_time: 0, max_view_threads: [], max_reply_threads: [] });
-        if (Date.now() - masterpiece_info.update_time > hs.data_cache_time) {
+        const loadContent = async () => {
             content_container.appendChild(createLoadingOverlay());
-            masterpiece_info = await updateMasterpiece(uid);
+            const top_progressbar = createTopProgressbar();
+            let progress = { value: 0, bar: top_progressbar };
+            masterpiece_info = await updateMasterpiece(uid, progress);
             content_container.innerHTML = '';
+        };
+
+        if (Date.now() - masterpiece_info.update_time > hs.data_cache_time) {
+            await loadContent();
         }
         content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
 
@@ -2815,12 +2924,10 @@ th.helper-sortby::after {
             footnote.className = 'helper-footnote';
             const update_time_ago = timeAgo(masterpiece_info.update_time);
             footnote.textContent = `缓存时间：${update_time_ago}`;
-            if (update_time_ago != '刚刚') {
+            if (update_time_ago != '今天内' || hs.enable_debug_mode) {
                 footnote.textContent += ' | ';
                 const reload_link = insertInteractiveLink('立即刷新', async () => {
-                    content_container.appendChild(createLoadingOverlay());
-                    masterpiece_info = await updateMasterpiece(uid);
-                    content_container.innerHTML = '';
+                    await loadContent();
                     content_container.appendChild(createMasterpieceTable(masterpiece_info, hs.default_masterpiece_sort));
                     updateFootnote();
                 }, footnote);
@@ -2831,7 +2938,7 @@ th.helper-sortby::after {
         updateFootnote();
     }
 
-    async function updateMasterpiece(uid) {
+    async function updateMasterpiece(uid, progress = null) {
         const getUserThreadNum = async (uid) => {
             const URL_params = { loc: 'home', mod: 'space', uid: uid, do: 'profile' };
             const page_doc = await getPageDocInDomain(URL_params);
@@ -2841,19 +2948,24 @@ th.helper-sortby::after {
         };
 
         const max_page = Math.ceil(await getUserThreadNum(uid) / 20);
+        updateProgressbar(progress, 10);
+        const dt = decimalCeil(90 / max_page);
+
         let threads = [];
         let promises = Array.from({ length: max_page }, (v, k) => k + 1).map(page_num => new Promise(async (resolve, reject) => {
-            const URL_params = { loc: 'home', mod: 'space', 'uid': uid, do: 'thread', view: 'me', page: page_num, mobile: 2 };
+            const URL_params = { loc: 'home', mod: 'space', 'uid': uid, do: 'thread', view: 'me', page: page_num, mobile: '2' };
             const page_doc = await getPageDocInDomain(URL_params, mobileUA);
             const threads_in_page = qSA('li.list', page_doc);
             for (let thread of threads_in_page) {
-                const thread_title_node = qS('.threadlist_tit', thread);
-                const thread_title = thread_title_node.innerText.trim();
-                const tid = thread_title_node.parentNode.href.parseURL().tid;
+                const title_node = qS('.threadlist_tit', thread);
+                const spanHTML = qS('span', title_node)?.outerHTML;
+                const title = qS('em', title_node).textContent;
+                const tid = title_node.parentNode.href.parseURL().tid;
                 const views = Number(qS('.dm-eye-fill', thread).nextSibling.textContent);
                 const replies = Number(qS('.dm-chat-s-fill', thread).nextSibling.textContent);
-                threads.push({ tid, title: thread_title, views, replies });
+                threads.push({ tid, spanHTML, title, views, replies });
             }
+            updateProgressbar(progress, dt);
             resolve();
         }));
         await Promise.all(promises);
@@ -2933,23 +3045,6 @@ th.helper-sortby::after {
     // 主体运行
     // ========================================================================================================
     insertHelperLink();
-
-    const hs = GM_getValue('helper_setting', {});
-    let default_updated = false;
-    for (let key in helper_default_setting) {
-        if (!(key in hs)) {
-            hs[key] = helper_default_setting[key];
-            default_updated = true;
-        }
-    }
-    if (default_updated) {
-        GM.setValue('helper_setting', hs);
-    }
-
-    if (hs.enable_notification) {
-        updateNotificationPopup();
-    }
-
     modifyPageDoc();
 
 })();
@@ -2958,20 +3053,14 @@ th.helper-sortby::after {
 // 功能优化
 // TODO 使用倒序浏览替代large_page_num
 // TODO 保存文本链接处理
-// TODO 代表作标题链接、省略
 // TODO 版面浮动名片、好友浮动名片添加代表作、关注、拉黑
 // TODO 进度条优化：saveThread中的getAllPageContent
-// TODO 代表作进度条
-// TODO 黑名单等级
 // TODO 自动切换全帖/选中：显示已选
 // TODO 滚动条悬停显示
 // TODO 设置按钮hover
-// TODO 无代表作时居中
 // TODO 支持firefox
-// TODO 设置hover text
 // TODO 保证弹窗弹出
 // TODO 保存的文件名是否要带小分区名
-// TODO 考虑更新通知、代表作中标题的精华、置顶、关闭标记
 // TODO 考虑op未加载的情况
 
 // 设置优化
@@ -2995,29 +3084,14 @@ th.helper-sortby::after {
 // TODO 使用?. ?? 运算符替代if判断
 // TODO 使用hasOwnProperty替代in判断
 // FIXME getSpaceAuthor
-// FIXME 使用username的空间
 // TODO 使用nodename替代tagname
 // TODO 避免getAllPageContent中first page重复获取
-// TODO 清除updatePageDoc和createFollowBtn中的重复代码
-
-// 搁置: 不会
-// TODO 上传表情
-// TODO 表情代码
 
 // 搁置: 麻烦
 // TODO 更好的自动换行
 // FIXME 置顶重复
 // FIXME 历史消息重复
-// FIXME 手动输入超标page, isFirstPage会判断出错（等其它非标URL的情况）
 // TODO md格式
-// TODO NSFW（跳过题图）
-// TODO 精华推荐
-// TODO 用户改名提醒
 // TODO 图片不区分楼层
-
-// 搁置：负载
-// TODO 上一集、下一集
-// TODO 图片预览
-
 
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
