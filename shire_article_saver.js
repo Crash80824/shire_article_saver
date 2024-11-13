@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.8
+// @version      1.0.9
 // @description  Download shire thread content.
 // @author       80824
-// @match        https://www.shireyishunjian.com/main/*
+// @match        https://www.shireyishunjian.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=shireyishunjian.com
 // @grant        unsafeWindow
 // @grant        GM.getValue
@@ -799,8 +799,8 @@
         return !Boolean(qS('#messagetext', doc));
     }
 
-    function isLogged(doc = document) {
-        return Boolean(qS('#myitem')) || Boolean(qS('#myspace'));
+    function isLogged() {
+        return document.cookie.split(';').some(e => /_lastcheckfeed=\d+/.test(e));
     }
 
     function isFirstPage(URL_params) {
@@ -3047,8 +3047,6 @@
 // FIXME getSpaceAuthor
 // TODO 使用nodename替代tagname
 // TODO 避免getAllPageContent中first page重复获取
-// TODO 清除updatePageDoc和createFollowBtn中的重复代码
-// TODO 拆解updateNotificationPopup
 
 // 搁置: 麻烦
 // TODO 更好的自动换行
@@ -3058,5 +3056,3 @@
 // TODO 图片不区分楼层
 
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
-
-// TODO location_params\.[a-zA-Z]* = 
