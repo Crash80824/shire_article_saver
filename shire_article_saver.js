@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.10
+// @version      1.0.11
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/*
