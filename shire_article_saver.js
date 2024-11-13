@@ -35,10 +35,12 @@
     const qSA = (selector, scope = document) => scope.querySelectorAll(selector);
     const docre = tag => document.createElement(tag);
     String.prototype.parseURL = function () {
-        let obj = {};
-        this.replace(/([^?=&#]+)=([^?=&#]+)/g, (_, key, value) => obj[key] = value);
-        this.replace(/#([^?=&#]+)/g, (_, hash) => obj.hash = hash);
-        this.replace(/(\w+)\.php/, (_, loc) => obj.loc = loc);
+        const url = new URL(this);
+        let obj = { hostname: url.hostname, hash: url.hash, pathname: url.pathname };
+        obj.loc = obj.pathname?.split(/[\/\.]/).at(-2);
+        for (let [k, v] of url.searchParams.entries()) {
+            obj[k] = v;
+        }
         return obj;
     };
 
