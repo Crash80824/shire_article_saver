@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.5
+// @version      1.0.6
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/main/*
@@ -2480,7 +2480,11 @@
         const all_value = GM_listValues();
         all_value.forEach(element => {
             const p = docre('p');
-            p.textContent = element + ':' + JSON.stringify(GM_getValue(element));
+            p.textContent = element;
+            p.addEventListener('click', () => {
+                div.innerHTML = '';
+                div.textContent = element + ':' + JSON.stringify(GM_getValue(element));
+            });
             div.appendChild(p);
         });
         return div;
@@ -2617,7 +2621,7 @@
             { id: 'history', name: '历史提醒', func: createHistoryNotificationTab, 'hidden': !hs.enable_history },
             { id: 'block', name: '标题屏蔽词', func: createBlockKeywordTab, 'hidden': !hs.enable_block_keyword },
             { id: 'blacklist', name: '黑名单', func: createBlacklistTab, 'hidden': !hs.enable_blacklist },
-            { id: 'debug', name: '调试', func: createDebugTab, hidden: !hs.enable_debug_mode }];
+            { id: 'debug', name: '变量查看', func: createDebugTab, hidden: !hs.enable_debug_mode }];
 
         const show_tab = content => {
             tab_content_container.innerHTML = '';
@@ -3024,16 +3028,13 @@
 // TODO 保存文本链接处理
 // TODO 版面浮动名片、好友浮动名片添加代表作、关注、拉黑
 // TODO 进度条优化：saveThread中的getAllPageContent
-// TODO 黑名单等级
 // TODO 自动切换全帖/选中：显示已选
 // TODO 滚动条悬停显示
 // TODO 设置按钮hover
 // TODO 支持firefox
-// TODO 设置hover text
 // TODO 保证弹窗弹出
 // TODO 保存的文件名是否要带小分区名
 // TODO 考虑op未加载的情况
-// TODO 使用getThreadPopularity来获取收藏数等信息
 
 // 设置优化
 // TODO 换行参数
@@ -3060,19 +3061,11 @@
 // TODO 避免getAllPageContent中first page重复获取
 // TODO 清除updatePageDoc和createFollowBtn中的重复代码
 
-// 搁置: 不会
-// TODO 上传表情
-// TODO 表情代码
-
 // 搁置: 麻烦
 // TODO 更好的自动换行
 // FIXME 置顶重复
 // FIXME 历史消息重复
-// FIXME 手动输入超标page, isFirstPage会判断出错（等其它非标URL的情况）
 // TODO md格式
-// TODO NSFW（跳过题图）
-// TODO 精华推荐
-// TODO 用户改名提醒
 // TODO 图片不区分楼层
 
 // NOTE 可能会用到 @require https://scriptcat.org/lib/513/2.0.0/ElementGetter.js
