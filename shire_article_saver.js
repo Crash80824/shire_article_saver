@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.11
+// @version      1.0.12
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/*
@@ -37,7 +37,7 @@
     String.prototype.parseURL = function () {
         const url = new URL(this);
         let obj = { hostname: url.hostname, hash: url.hash, pathname: url.pathname };
-        obj.loc = obj.pathname?.split(/[\/\.]/).at(-2);
+        obj.loc = obj.pathname?.match(/([^\/]+)\.[^\.]*/)?.at(1);
         for (let [k, v] of url.searchParams.entries()) {
             obj[k] = v;
         }
@@ -100,9 +100,10 @@
     // 判断脚本启用条件
     // ========================================================================================================
     const location_params = document.URL.parseURL();
-    const is_desktop = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
+    log.log('Location params:', location_params);
 
-    if (Object.entries(location_params).length != 0 && !is_desktop) {
+    const is_desktop = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
+    if (location_params.loc != undefined && !is_desktop) {
         log.log('Mobile version detected, shire-helper disabled.');
         return;
     }
@@ -355,6 +356,7 @@
             }
 
             #helper-overlay.helper-redirect-layer{
+                cursor: pointer;
                 background-color: transparent;
             }
 
@@ -2014,16 +2016,18 @@
         executeIfLoctionMatch({ do: 'wall', uid: GM_info.script.author }, addDebugModeComponent);
     }
 
-    function modifyMainPage() {
+    function modifyIndexPage() {
         setHidden(qS('#logo'));
         setHidden(qS('#desktop'));
         setHidden(qS('#mobile'));
+        insertElement(createOverlay('redirect', () => { location.href = 'main' }), qS('#info'), 'insertBefore');
+        log.log('Index page modified.');
     }
 
     function modifyPageDoc() {
         if (hasReadPermission() && isLogged()) {
 
-            executeIfLoctionMatch({ loc: undefined }, modifyMainPage);
+            executeIfLoctionMatch({ loc: undefined }, modifyIndexPage);
             executeIfLoctionMatch({ loc: 'forum', mod: 'viewthread' }, modifyPostPage);
             executeIfLoctionMatch({ loc: 'home', mod: 'space' }, modifySpacePage);
 
