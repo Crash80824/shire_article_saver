@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.12.2
+// @version      1.0.12.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/*
@@ -2706,11 +2706,11 @@
             let notification_messages = [];
             let promises = [];
 
-            const createParaAndInsertUserNameLink = (uid, parent) => {
+            const createParaAndInsertUserNameLink = (user, parent) => {
                 const messageElement = docre('div');
                 messageElement.className = 'helper-noti-message';
                 parent.appendChild(messageElement);
-                const user_URL_params = { loc: 'home', mod: 'space', uid };
+                const user_URL_params = { loc: 'home', mod: 'space', uid: user.uid };
                 const user_link = insertLink(user.name, user_URL_params, messageElement);
                 user_link.className = 'helper-ellip-link';
                 user_link.style.maxWidth = '30%';
@@ -2718,6 +2718,7 @@
                 return messageElement;
             }
             const processNewInfos = (user, thread, new_infos) => {
+                let followed_threads = GM_getValue(user.uid + '_followed_threads', []);
                 let new_threads = new_infos.new;
                 const found_last = new_infos.found;
                 const last_tpid = new_infos.last_tpid;
@@ -2740,7 +2741,7 @@
                 if (thread.tid != 0) {
                     for (let new_thread of new_threads) {
                         const thread_title = new_thread.title;
-                        const messageElement = createParaAndInsertUserNameLink(user.uid, div);
+                        const messageElement = createParaAndInsertUserNameLink(user, div);
                         let message = ` 有`;
                         if (!found_last && thread.tid != -1) { // 在特定关注主题末页未找到不晚于last_pid的
                             message += '至少';
@@ -2753,7 +2754,7 @@
                         thread_message.className = 'helper-ellip-link';
                     }
                     if (!found_last && thread.tid == -1) { // 在空间回复页首页未找到不晚于last_pid的
-                        const messageElement = createParaAndInsertUserNameLink(user.uid, div);
+                        const messageElement = createParaAndInsertUserNameLink(user, div);
                         const text_element2 = document.createTextNode(' 或有 ');
                         messageElement.appendChild(text_element2);
                         const reply_URL_params = { loc: 'home', mod: 'space', 'uid': user.uid, do: 'thread', view: 'me', type: 'reply', from: 'space' };
@@ -2766,7 +2767,7 @@
                     const notif_num = new_threads.length > hs.max_noti_threads ? hs.max_noti_threads : new_threads.length;
                     noti_threads.push(...new_threads.slice(0, notif_num));
                     for (let new_thread of noti_threads) {
-                        const messageElement = createParaAndInsertUserNameLink(user.uid, div);
+                        const messageElement = createParaAndInsertUserNameLink(user, div);
                         const text_element = document.createTextNode(' 有新帖 ');
                         messageElement.appendChild(text_element);
                         const thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: new_thread.tid };
@@ -2777,7 +2778,7 @@
                         }
                     }
                     if (new_threads.length > 3) {
-                        const messageElement = createParaAndInsertUserNameLink(user.uid, div);
+                        const messageElement = createParaAndInsertUserNameLink(user, div);
                         let message = ` 有另外 `;
                         if (!found_last) {
                             message += '至少';
