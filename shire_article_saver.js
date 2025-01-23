@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         shire helper
 // @namespace    https://greasyfork.org/zh-CN/scripts/461311-shire-helper
-// @version      1.0.12.1
+// @version      1.0.12.3
 // @description  Download shire thread content.
 // @author       80824
 // @match        https://www.shireyishunjian.com/*
@@ -89,6 +89,7 @@
     for (let key in helper_default_setting) {
         if (!(key in hs)) {
             hs[key] = helper_default_setting[key];
+            log.info(`Setting ${key} not found, set to default value.`);
             default_updated = true;
         }
     }
@@ -104,7 +105,7 @@
 
     const is_desktop = location_params.mobile == 'no' || Array.from(qSA('meta')).some(meta => meta.getAttribute('http-equiv') === 'X-UA-Compatible');
     if (location_params.loc != undefined && !is_desktop) {
-        log.log('Mobile version detected, shire-helper disabled.');
+        log.info('Mobile version detected, shire-helper disabled.');
         return;
     }
 
@@ -2006,7 +2007,7 @@
             checkbox.addEventListener('change', () => {
                 hs.enable_debug_mode = checkbox.checked;
                 hs.enable_debug_mode ? log.setLevel('debug') : log.resetLevel();
-                log.log('调试模式已' + (hs.enable_debug_mode ? '开启' : '关闭'));
+                log.info('调试模式已' + (hs.enable_debug_mode ? '开启' : '关闭'));
                 GM.setValue('helper_setting', hs);
             });
             const text = document.createTextNode('调试模式');
@@ -2037,30 +2038,11 @@
 
             updatePageDoc();
 
-
             if (hs.enable_notification) {
                 updateNotificationPopup();
             }
 
-            // if (location_params.loc == 'forum') {
-            //     if (location_params.mod == 'viewthread') {
-            //         if (init) {
-            //             insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
-            //             modifyPostOnSubmit('fastpostform', original_smilies_types);
-            //         }
-            //     }
-            //     if (location_params.mod == 'post') {
-            //         insertExtraSmilies('smiliesdiv', 'e_', original_smilies_types, new_smilies);
-            //         modifyBBCode2Html(original_smilies_types);
-            //         modifyPostOnSubmit('postform', original_smilies_types);
-            //     }
-            //     if (location_params.mod == 'forumdisplay') {
-            //         if (init) {
-            //             insertExtraSmilies('fastpostsmiliesdiv', 'fastpost', original_smilies_types, new_smilies);
-            //             modifyPostOnSubmit('fastpostform', original_smilies_types);
-            //         }
-            //     }
-            // }
+            insertHelperLink();
         }
     }
 
@@ -2723,97 +2705,104 @@
             let popup = qS('#helper-notification-popup');
             let notification_messages = [];
             let promises = [];
+
+            const createParaAndInsertUserNameLink = (user, parent) => {
+                const messageElement = docre('div');
+                messageElement.className = 'helper-noti-message';
+                parent.appendChild(messageElement);
+                const user_URL_params = { loc: 'home', mod: 'space', uid: user.uid };
+                const user_link = insertLink(user.name, user_URL_params, messageElement);
+                user_link.className = 'helper-ellip-link';
+                user_link.style.maxWidth = '30%';
+                user_link.style.color = 'inherit !important';
+                return messageElement;
+            }
+            const processNewInfos = (user, thread, new_infos) => {
+                let followed_threads = GM_getValue(user.uid + '_followed_threads', []);
+                let new_threads = new_infos.new;
+                const found_last = new_infos.found;
+                const last_tpid = new_infos.last_tpid;
+
+                if (new_threads.length > 0) {
+                    updateListElements(followed_threads, { tid: thread.tid, last_tpid, title: thread.title }, true, (a, b) => a.tid == b.tid);
+                    updateGMList(user.uid + '_followed_threads', followed_threads);
+                }
+
+                if (thread.last_tpid == 0 || new_threads.length == 0) { // 如果没有更新，或者是首次关注，则不发送消息
+                    return notification_messages;
+                }
+
+                if (!popup) {
+                    createNotificationPopup();
+                    popup = qS('#helper-notification-popup');
+                }
+
+                const div = docre('div');
+                if (thread.tid != 0) {
+                    for (let new_thread of new_threads) {
+                        const thread_title = new_thread.title;
+                        const messageElement = createParaAndInsertUserNameLink(user, div);
+                        let message = ` 有`;
+                        if (!found_last && thread.tid != -1) { // 在特定关注主题末页未找到不晚于last_pid的
+                            message += '至少';
+                        }
+                        message += `${new_thread.pids.length}条新回复在 `;
+                        const text_element = document.createTextNode(message);
+                        messageElement.appendChild(text_element);
+                        const thread_URL_params = { loc: 'forum', mod: 'redirect', goto: 'findpost', ptid: new_thread.tid, pid: new_thread.pids.at(-1) };
+                        const thread_message = insertLink(thread_title, thread_URL_params, messageElement);
+                        thread_message.className = 'helper-ellip-link';
+                    }
+                    if (!found_last && thread.tid == -1) { // 在空间回复页首页未找到不晚于last_pid的
+                        const messageElement = createParaAndInsertUserNameLink(user, div);
+                        const text_element2 = document.createTextNode(' 或有 ');
+                        messageElement.appendChild(text_element2);
+                        const reply_URL_params = { loc: 'home', mod: 'space', 'uid': user.uid, do: 'thread', view: 'me', type: 'reply', from: 'space' };
+                        insertLink('更多新回复', reply_URL_params, messageElement);
+                    }
+                }
+                else if (thread.tid == 0) {
+                    const noti_threads = new_threads.filter(e => hs.important_fids.includes(e.fid));
+                    hs.important_fids.forEach(fid => { new_threads = new_threads.filter(e => e.fid != fid) });
+                    const notif_num = new_threads.length > hs.max_noti_threads ? hs.max_noti_threads : new_threads.length;
+                    noti_threads.push(...new_threads.slice(0, notif_num));
+                    for (let new_thread of noti_threads) {
+                        const messageElement = createParaAndInsertUserNameLink(user, div);
+                        const text_element = document.createTextNode(' 有新帖 ');
+                        messageElement.appendChild(text_element);
+                        const thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: new_thread.tid };
+                        const thread_message = insertLink(new_thread.title, thread_URL_params, messageElement);
+                        thread_message.className = 'helper-ellip-link';
+                        if (hs.important_fids.includes(new_thread.fid)) {
+                            thread_message.style = 'color: red !important';
+                        }
+                    }
+                    if (new_threads.length > 3) {
+                        const messageElement = createParaAndInsertUserNameLink(user, div);
+                        let message = ` 有另外 `;
+                        if (!found_last) {
+                            message += '至少';
+                        }
+                        const text_element = document.createTextNode(message);
+                        messageElement.appendChild(text_element);
+                        const thread_URL_params = { loc: 'home', mod: 'space', 'uid': user.uid, do: 'thread', view: 'me', from: 'space' };
+                        insertLink(`${new_threads.length - 3}条新帖`, thread_URL_params, messageElement);
+                    }
+                }
+                popup.appendChild(div);
+                notification_messages.push(div.innerHTML);
+
+                return notification_messages;
+            };
+
             for (let user of followed_users) {
                 let followed_threads = GM_getValue(user.uid + '_followed_threads', []);
                 for (let thread of followed_threads) {
-                    promises.push(getUserNewestPostOrThread(user.uid, thread.tid, thread.last_tpid).then(new_infos => {
-                        let new_threads = new_infos.new;
-                        const found_last = new_infos.found;
-                        const last_tpid = new_infos.last_tpid;
-
-                        if (new_threads.length > 0) {
-                            updateListElements(followed_threads, { tid: thread.tid, last_tpid, title: thread.title }, true, (a, b) => a.tid == b.tid);
-                            updateGMList(user.uid + '_followed_threads', followed_threads);
-                        }
-
-                        if (thread.last_tpid == 0 || new_threads.length == 0) { // 如果没有更新，或者是首次关注，则不发送消息
-                            return notification_messages;
-                        }
-
-                        if (!popup) {
-                            createNotificationPopup();
-                            popup = qS('#helper-notification-popup');
-                        }
-
-                        function createParaAndInsertUserNameLink(uid, parent) {
-                            const messageElement = docre('div');
-                            messageElement.className = 'helper-noti-message';
-                            parent.appendChild(messageElement);
-                            const user_URL_params = { loc: 'home', mod: 'space', uid };
-                            const user_link = insertLink(user.name, user_URL_params, messageElement);
-                            user_link.className = 'helper-ellip-link';
-                            user_link.style.maxWidth = '30%';
-                            user_link.style.color = 'inherit !important';
-                            return messageElement;
-                        }
-
-                        const div = docre('div');
-                        if (thread.tid != 0) {
-                            for (let new_thread of new_threads) {
-                                const thread_title = new_thread.title;
-                                const messageElement = createParaAndInsertUserNameLink(user.uid, div);
-                                let message = ` 有`;
-                                if (!found_last && thread.tid != -1) { // 在特定关注主题末页未找到不晚于last_pid的
-                                    message += '至少';
-                                }
-                                message += `${new_thread.pids.length}条新回复在 `;
-                                const text_element = document.createTextNode(message);
-                                messageElement.appendChild(text_element);
-                                const thread_URL_params = { loc: 'forum', mod: 'redirect', goto: 'findpost', ptid: new_thread.tid, pid: new_thread.pids.at(-1) };
-                                const thread_message = insertLink(thread_title, thread_URL_params, messageElement);
-                                thread_message.className = 'helper-ellip-link';
-                            }
-                            if (!found_last && thread.tid == -1) { // 在空间回复页首页未找到不晚于last_pid的
-                                const messageElement = createParaAndInsertUserNameLink(user.uid, div);
-                                const text_element2 = document.createTextNode(' 或有 ');
-                                messageElement.appendChild(text_element2);
-                                const reply_URL_params = { loc: 'home', mod: 'space', 'uid': user.uid, do: 'thread', view: 'me', type: 'reply', from: 'space' };
-                                insertLink('更多新回复', reply_URL_params, messageElement);
-                            }
-                        }
-                        else if (thread.tid == 0) {
-                            const noti_threads = new_threads.filter(e => hs.important_fids.includes(e.fid));
-                            hs.important_fids.forEach(fid => { new_threads = new_threads.filter(e => e.fid != fid) });
-                            const notif_num = new_threads.length > hs.max_noti_threads ? hs.max_noti_threads : new_threads.length;
-                            noti_threads.push(...new_threads.slice(0, notif_num));
-                            for (let new_thread of noti_threads) {
-                                const messageElement = createParaAndInsertUserNameLink(user.uid, div);
-                                const text_element = document.createTextNode(' 有新帖 ');
-                                messageElement.appendChild(text_element);
-                                const thread_URL_params = { loc: 'forum', mod: 'viewthread', tid: new_thread.tid };
-                                const thread_message = insertLink(new_thread.title, thread_URL_params, messageElement);
-                                thread_message.className = 'helper-ellip-link';
-                                if (hs.important_fids.includes(new_thread.fid)) {
-                                    thread_message.style = 'color: red !important';
-                                }
-                            }
-                            if (new_threads.length > 3) {
-                                const messageElement = createParaAndInsertUserNameLink(user.uid, div);
-                                let message = ` 有另外 `;
-                                if (!found_last) {
-                                    message += '至少';
-                                }
-                                const text_element = document.createTextNode(message);
-                                messageElement.appendChild(text_element);
-                                const thread_URL_params = { loc: 'home', mod: 'space', 'uid': user.uid, do: 'thread', view: 'me', from: 'space' };
-                                insertLink(`${new_threads.length - 3}条新帖`, thread_URL_params, messageElement);
-                            }
-                        }
-                        popup.appendChild(div);
-                        notification_messages.push(div.innerHTML);
-
-                        return notification_messages;
-                    }));
+                    promises.push(
+                        getUserNewestPostOrThread(user.uid, thread.tid, thread.last_tpid).then(
+                            new_infos => processNewInfos(user, thread, new_infos)
+                        )
+                    );
                 }
             }
             if (hs.enable_history) {
@@ -3044,7 +3033,7 @@
     // ========================================================================================================
     // 主体运行
     // ========================================================================================================
-    insertHelperLink();
+
     modifyPageDoc();
 
 })();
@@ -3059,7 +3048,6 @@
 // TODO 滚动条悬停显示
 // TODO 设置按钮hover
 // TODO 支持firefox
-// TODO 保证弹窗弹出
 // TODO 保存的文件名是否要带小分区名
 // TODO 考虑op未加载的情况
 
@@ -3088,7 +3076,6 @@
 // TODO 避免getAllPageContent中first page重复获取
 
 // 搁置: 麻烦
-// TODO 更好的自动换行
 // FIXME 置顶重复
 // FIXME 历史消息重复
 // TODO md格式
